@@ -113,6 +113,8 @@ Every confirmed scan automatically:
 
 The Python script queries all entries where `is_processed == false`, downloads and decodes the images, retrains the model, and marks entries as processed.
 
+The training pipeline lives in the [`train_model_for_sugar_check_ai/`](./train_model_for_sugar_check_ai) directory of this monorepo.
+
 ---
 
 ## Tech Stack
