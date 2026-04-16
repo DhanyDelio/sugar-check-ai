@@ -1,0 +1,50 @@
+name: sugarcheck
+description: "Doctor Gula — AI-powered sugar intake tracker."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^2.27.0
+  cloud_firestore: ^4.15.8
+  firebase_storage: ^11.6.9
+  firebase_ml_model_downloader: ^0.2.5+6
+
+  # Cloudinary & networking
+  http: ^1.1.0
+
+  # Image processing
+  camera: ^0.12.0+1
+  image: ^4.8.0
+  flutter_image_compress: ^2.3.0
+
+  # AI inference
+  tflite_flutter: ^0.12.1
+  google_mlkit_text_recognition: ^0.15.1
+  google_generative_ai: ^0.4.0
+
+  # Utils
+  flutter_dotenv: ^5.2.1
+  path_provider: ^2.1.5
+  permission_handler: ^11.3.1
+  url_launcher: ^6.3.0
+  share_plus: ^10.0.0
+  provider: ^6.1.2
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/
+    - .env
