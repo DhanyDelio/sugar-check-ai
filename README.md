@@ -84,6 +84,31 @@ lib/
 | Deployment | Firebase ML Model Downloader (remote) + bundled `.tflite` (fallback) |
 | Retraining trigger | `is_processed: false` flag in Cloudinary JSON, consumed by Python pipeline |
 
+### Current Model — Recognized Brands (v1)
+
+The current model is a **brand-level classifier** — it identifies the product brand from packaging photos. Variant recognition (e.g. *Oreo Thins*, *Teh Botol Less Sugar*) is planned for the next training cycle as more labeled data is collected.
+
+| # | Brand |
+|---|---|
+| 0 | Adem Sari |
+| 1 | Dum Dum |
+| 2 | Frisian Flag |
+| 3 | Hatari |
+| 4 | Indomaret |
+| 5 | Indomie |
+| 6 | Indomilk |
+| 7 | Interbis |
+| 8 | Nola |
+| 9 | Oatside |
+| 10 | Oreo |
+| 11 | Teh Botol Sosro |
+| 12 | Cokelat Cadbury |
+| 13 | Cokelat Delfi |
+| 14 | Cokelat SilverQueen |
+| 15 | Susu Ultra Milk |
+
+> The dataset grows automatically with every user scan. Each confirmed entry contributes labeled images back into the training pipeline, making the model progressively more accurate over time.
+
 ### False Positive Detection
 
 If AI confidence ≥ 80% but the user corrects the product name, the entry is flagged as `user_corrected: true` — marking it as high-priority training data for the next retraining cycle.
@@ -117,7 +142,9 @@ The training pipeline lives in the [`train_model_for_sugar_check_ai/`](./train_m
 
 ---
 
-## Tech Stack
+## Why Cloudinary?
+
+The entire data pipeline — images and metadata — is stored in Cloudinary as structured JSON packages. This keeps the architecture lean and cost-efficient during development, while still being scalable. Firebase is retained solely for ML Model Downloader, which handles distributing updated `.tflite` models to the app without requiring a new release.
 
 | Layer | Technology |
 |---|---|

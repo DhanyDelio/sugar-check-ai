@@ -12,8 +12,6 @@ dependencies:
 
   # Firebase
   firebase_core: ^2.27.0
-  cloud_firestore: ^4.15.8
-  firebase_storage: ^11.6.9
   firebase_ml_model_downloader: ^0.2.5+6
 
   # Cloudinary & networking
