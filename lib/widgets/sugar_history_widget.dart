@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/sugar_provider.dart';
@@ -126,29 +127,27 @@ class _EntryCard extends StatelessWidget {
 
     // Fall back to Cloudinary URL (after app restart)
     if (entry.imageUrl != null) {
-      return Image.network(
-        entry.imageUrl!,
+      return CachedNetworkImage(
+        imageUrl: entry.imageUrl!,
         width: size,
         height: size,
         fit: BoxFit.cover,
-        loadingBuilder: (_, child, progress) => progress == null
-            ? child
-            : Container(
-                width: size,
-                height: size,
-                color: Colors.white10,
-                child: const Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white24,
-                    ),
-                  ),
-                ),
+        placeholder: (_, __) => Container(
+          width: size,
+          height: size,
+          color: Colors.white10,
+          child: const Center(
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white24,
               ),
-        errorBuilder: (_, __, ___) => _placeholder(size),
+            ),
+          ),
+        ),
+        errorWidget: (_, __, ___) => _placeholder(size),
       );
     }
 
@@ -162,3 +161,4 @@ class _EntryCard extends StatelessWidget {
         child: const Icon(Icons.image_not_supported_outlined,
             color: Colors.white24),
       );
+}

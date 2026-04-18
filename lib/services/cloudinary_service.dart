@@ -41,7 +41,40 @@ class CloudinaryService {
     return compressed;
   }
 
-  /// Upload JSON payload to Cloudinary as a raw file using MultipartFile.
+  static String get _imageUploadUrl =>
+      'https://api.cloudinary.com/v1_1/$_cloudName/image/upload';
+
+  /// Upload primary image as JPEG to Cloudinary, return secure_url
+  Future<String> _uploadImage({
+    required Uint8List imageBytes,
+    required String publicId,
+    required String folder,
+  }) async {
+    final dir = await getTemporaryDirectory();
+    final File tempFile = File('${dir.path}/$publicId.jpg');
+    await tempFile.writeAsBytes(imageBytes);
+
+    final request = http.MultipartRequest('POST', Uri.parse(_imageUploadUrl))
+      ..fields['upload_preset'] = _uploadPreset
+      ..fields['folder'] = folder
+      ..fields['public_id'] = publicId
+      ..files.add(await http.MultipartFile.fromPath(
+        'file',
+        tempFile.path,
+        filename: '$publicId.jpg',
+      ));
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    await tempFile.delete();
+
+    if (response.statusCode != 200) {
+      throw Exception('Image upload failed: ${response.body}');
+    }
+
+    final Map<String, dynamic> res = jsonDecode(response.body);
+    return res['secure_url'] as String;
+  }
   /// public_id is capped at 50 chars to avoid display name limit errors.
   Future<String> _uploadJson({
     required Map<String, dynamic> jsonData,
@@ -103,11 +136,22 @@ class CloudinaryService {
       final String timestamp =
           DateTime.now().millisecondsSinceEpoch.toString();
 
-      // 1. Compress and encode primary image
+      // 1. Compress primary image
       debugPrint("☁️ Compressing primary image...");
       final Uint8List primaryBytes = await _compressPrimary(primaryImage);
       final String primaryBase64 = base64Encode(primaryBytes);
       debugPrint("✅ Primary encoded (${primaryBase64.length} chars)");
+
+      // 1b. Upload primary image as JPEG → get display URL
+      final String imagePublicId = '${cleanUserId}_${timestamp}_img';
+      final String primaryImageUrl = await _uploadImage(
+        imageBytes: primaryBytes,
+        publicId: imagePublicId.length > 50
+            ? imagePublicId.substring(imagePublicId.length - 50)
+            : imagePublicId,
+        folder: 'training_data/$cleanUserId/images',
+      );
+      debugPrint("✅ Primary image URL: $primaryImageUrl");
 
       // 2. Compress and encode silent frames sequentially
       debugPrint("☁️ Compressing ${silentFramesList.length} silent frame(s)...");
@@ -155,7 +199,7 @@ class CloudinaryService {
 
       debugPrint("🚀 Upload complete! "
           "(1 primary + ${silentFramesList.length} silent frames)");
-      return url;
+      return primaryImageUrl;
     } catch (e) {
       debugPrint("❌ Cloudinary Error: $e");
       rethrow;

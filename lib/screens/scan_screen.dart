@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../controllers/camera_controller.dart';
+import '../screens/main_screen.dart';
 import '../widgets/camera_preview_widget.dart';
 import '../widgets/capture_button_widget.dart';
 import '../widgets/scanner_overlay_widget.dart';

@@ -46,3 +46,10 @@ app.*.map.json
 
 # Environment variables
 .env
+
+# IDE files
+*.iml
+linux/
+macos/
+windows/
+web/
