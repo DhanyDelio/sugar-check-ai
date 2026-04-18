@@ -31,10 +31,9 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: _currentIndex == 0
+          ? const HomeScreen()
+          : const ScanScreen(),
       bottomNavigationBar: AppBottomNav(
         currentIndex: _currentIndex,
         onTap: _switchTab,

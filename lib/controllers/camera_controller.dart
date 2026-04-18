@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sugarcheck/core/navigation/navigation_service.dart';
 import '../services/tflite_service.dart';
 import '../utils/image_utils.dart';
@@ -63,7 +64,26 @@ class ScannerController with ChangeNotifier {
       await controller!.initialize();
       notifyListeners();
 
-      // Silent capture: collect frames in background while user aims the camera
+      await _startSilentCapture();
+    } catch (e) {
+      debugPrint("❌ Initialization Error: $e");
+    }
+  }
+
+  /// Restart silent capture — called every time user enters the scan screen.
+  Future<void> restartSilentCapture() async {
+    if (controller == null || !controller!.value.isInitialized) return;
+
+    // Stop existing stream if still running
+    if (controller!.value.isStreamingImages) {
+      await controller!.stopImageStream();
+    }
+
+    await _startSilentCapture();
+  }
+
+  Future<void> _startSilentCapture() async {
+    try {
       int frameCount = 0;
       DateTime lastFrameTime = DateTime.now();
       silentFrames.clear();
@@ -72,7 +92,6 @@ class ScannerController with ChangeNotifier {
         final now = DateTime.now();
         if (frameCount < _silentFrameCount &&
             now.difference(lastFrameTime).inMilliseconds > _silentFrameIntervalMs) {
-          // Convert YUV420 (native Android camera format) to RGB for storage
           final img.Image converted = ImageUtils.convertYUV420ToImage(image);
           final Uint8List compressed = Uint8List.fromList(
             img.encodeJpg(converted, quality: 35),
@@ -89,7 +108,7 @@ class ScannerController with ChangeNotifier {
         }
       });
     } catch (e) {
-      debugPrint("❌ Initialization Error: $e");
+      debugPrint("❌ Silent capture error: $e");
     }
   }
 
@@ -164,6 +183,67 @@ class ScannerController with ChangeNotifier {
     isAnalyzing = value;
     loadingMessage = message;
     notifyListeners();
+  }
+
+  /// Pick an image from gallery and run it through the AI pipeline.
+  Future<void> onGalleryPressed(String userEmail) async {
+    if (isAnalyzing) return;
+
+    try {
+      final XFile? picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+      );
+      if (picked == null) return;
+
+      _setLoading(true, _loadingMessages[0]);
+
+      final Uint8List originalBytes = await picked.readAsBytes();
+      final img.Image? decodedImg = img.decodeImage(originalBytes);
+      if (decodedImg == null) {
+        debugPrint("❌ decodeImage failed");
+        _setLoading(false, "");
+        return;
+      }
+
+      // Resize for display
+      _setLoading(true, _loadingMessages[1]);
+      final img.Image displayImg = img.copyResize(decodedImg, width: _displayImageWidth);
+      final Uint8List capturedFrame = Uint8List.fromList(
+        img.encodeJpg(displayImg, quality: 60),
+      );
+
+      // AI inference
+      _setLoading(true, _loadingMessages[2]);
+      final img.Image aiImg = img.copyResize(decodedImg, width: _aiPreResizeWidth);
+      final ScanResult result = await _tfliteService.runInference(aiImg);
+
+      _setLoading(true, _loadingMessages[3]);
+
+      String productName = "";
+      if (result.isConfident) {
+        productName = formatLabel(result.product);
+        debugPrint("✅ Auto-fill: $productName (${result.confidence.toStringAsFixed(1)}%)");
+      } else {
+        debugPrint("⚠️ Low confidence (${result.confidence.toStringAsFixed(1)}%) — field left empty");
+      }
+
+      _setLoading(false, "");
+      NavigationService.navigateTo(
+        SugarEditScreen(
+          ocrImage: capturedFrame,
+          silentImages: const [], // no silent frames for gallery images
+          initialSugar: 0,
+          initialProductName: productName,
+          userEmail: userEmail,
+          suggestionName: result.isConfident ? null : formatLabel(result.product),
+          confidence: result.confidence,
+        ),
+      );
+    } catch (e) {
+      debugPrint("❌ Gallery Error: $e");
+      _setLoading(false, "");
+    }
   }
 
   @override

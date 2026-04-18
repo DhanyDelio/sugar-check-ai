@@ -49,21 +49,7 @@ class _EntryCard extends StatelessWidget {
             // Thumbnail
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: entry.imageBytes != null
-                  ? Image.memory(
-                      entry.imageBytes!,
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.cover,
-                      cacheWidth: 120,
-                    )
-                  : Container(
-                      width: 60,
-                      height: 60,
-                      color: Colors.white10,
-                      child: const Icon(Icons.image_not_supported_outlined,
-                          color: Colors.white24),
-                    ),
+              child: _buildThumbnail(entry),
             ),
             const SizedBox(width: 14),
 
@@ -123,4 +109,56 @@ class _EntryCard extends StatelessWidget {
     final m = dt.minute.toString().padLeft(2, '0');
     return "$h:$m";
   }
-}
+
+  Widget _buildThumbnail(SugarEntry entry) {
+    const double size = 60;
+
+    // Prefer in-memory bytes (fresh scan) — no network call needed
+    if (entry.imageBytes != null) {
+      return Image.memory(
+        entry.imageBytes!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: 120,
+      );
+    }
+
+    // Fall back to Cloudinary URL (after app restart)
+    if (entry.imageUrl != null) {
+      return Image.network(
+        entry.imageUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        loadingBuilder: (_, child, progress) => progress == null
+            ? child
+            : Container(
+                width: size,
+                height: size,
+                color: Colors.white10,
+                child: const Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white24,
+                    ),
+                  ),
+                ),
+              ),
+        errorBuilder: (_, __, ___) => _placeholder(size),
+      );
+    }
+
+    return _placeholder(size);
+  }
+
+  Widget _placeholder(double size) => Container(
+        width: size,
+        height: size,
+        color: Colors.white10,
+        child: const Icon(Icons.image_not_supported_outlined,
+            color: Colors.white24),
+      );

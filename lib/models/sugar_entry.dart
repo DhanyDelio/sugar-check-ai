@@ -5,18 +5,43 @@ class SugarEntry {
   final String brandName;
   final String variantName;
   final double totalSugar;
-  final Uint8List? imageBytes;
   final DateTime timestamp;
+
+  /// URL from Cloudinary — persisted to local storage
+  final String? imageUrl;
+
+  /// In-memory bytes for immediate display after scan — not persisted
+  final Uint8List? imageBytes;
 
   SugarEntry({
     required this.id,
     required this.brandName,
     required this.variantName,
     required this.totalSugar,
-    this.imageBytes,
     required this.timestamp,
+    this.imageUrl,
+    this.imageBytes,
   });
 
   String get displayName =>
       variantName.isNotEmpty ? '$brandName — $variantName' : brandName;
+
+  /// Serialize to JSON for local storage — imageBytes intentionally excluded
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'brandName': brandName,
+        'variantName': variantName,
+        'totalSugar': totalSugar,
+        'timestamp': timestamp.toIso8601String(),
+        'imageUrl': imageUrl,
+      };
+
+  factory SugarEntry.fromJson(Map<String, dynamic> json) => SugarEntry(
+        id: json['id'] as String,
+        brandName: json['brandName'] as String,
+        variantName: json['variantName'] as String,
+        totalSugar: (json['totalSugar'] as num).toDouble(),
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        imageUrl: json['imageUrl'] as String?,
+      );
 }

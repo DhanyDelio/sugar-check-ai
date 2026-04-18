@@ -139,37 +139,48 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                     // Confirm & upload button
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        icon: const Icon(Icons.cloud_upload_outlined),
-                        label: const Text("Confirm"),
-                        onPressed: () async {
-                          final provider = context.read<SugarProvider>();
-                          final bool success = await _controller.uploadData(
-                            widget.userEmail,
-                            widget.ocrImage,
-                            onSuccess: (totalSugar) {
-                              provider.addEntry(SugarEntry(
-                                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                brandName: _controller.productController.text,
-                                variantName: _controller.varianController.text,
-                                totalSugar: totalSugar,
-                                imageBytes: widget.ocrImage,
-                                timestamp: DateTime.now(),
-                              ));
-                            },
+                      child: ListenableBuilder(
+                        listenable: _controller.gulaSajianController,
+                        builder: (context, _) {
+                          final bool canSubmit = _controller.canSubmit;
+                          return ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: canSubmit
+                                  ? Colors.green
+                                  : Colors.grey.shade800,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: const Icon(Icons.cloud_upload_outlined),
+                            label: const Text("Confirm"),
+                            onPressed: canSubmit
+                                ? () async {
+                                    final provider = context.read<SugarProvider>();
+                                    final bool success = await _controller.uploadData(
+                                      widget.userEmail,
+                                      widget.ocrImage,
+                                      onSuccess: (totalSugar, imageUrl) {
+                                        provider.addEntry(SugarEntry(
+                                          id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                          brandName: _controller.productController.text,
+                                          variantName: _controller.varianController.text,
+                                          totalSugar: totalSugar,
+                                          imageBytes: widget.ocrImage,
+                                          imageUrl: imageUrl,
+                                          timestamp: DateTime.now(),
+                                        ));
+                                      },
+                                    );
+                                    if (success && mounted) {
+                                      Navigator.of(context).popUntil((r) => r.isFirst);
+                                      MainScreen.switchToHome();
+                                    }
+                                  }
+                                : null,
                           );
-                          if (success && mounted) {
-                            Navigator.of(context).popUntil((r) => r.isFirst);
-                            MainScreen.switchToHome();
-                          }
                         },
                       ),
                     ),

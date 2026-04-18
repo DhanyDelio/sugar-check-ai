@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 class CloudinaryService {
   static String get _cloudName => dotenv.env['CLOUDINARY_CLOUD_NAME'] ?? '';
@@ -12,7 +14,7 @@ class CloudinaryService {
       'https://api.cloudinary.com/v1_1/$_cloudName/raw/upload';
 
   /// Compress primary image to 800px width, quality 45
-  Future<String> _compressPrimary(Uint8List imageBytes) async {
+  Future<Uint8List> _compressPrimary(Uint8List imageBytes) async {
     final Uint8List? result = await FlutterImageCompress.compressWithList(
       imageBytes,
       minWidth: 800,
@@ -22,12 +24,11 @@ class CloudinaryService {
     );
     final Uint8List compressed = result ?? imageBytes;
     debugPrint("  🗜 [primary] ${imageBytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
-    return base64Encode(compressed);
+    return compressed;
   }
 
-  /// Compress silent frame to 400px width, quality 30.
-  /// Smaller size is acceptable since these are used for training variety, not primary detection.
-  Future<String> _compressSilentFrame(Uint8List imageBytes, int index) async {
+  /// Compress silent frame to 400px width, quality 30
+  Future<Uint8List> _compressSilentFrame(Uint8List imageBytes, int index) async {
     final Uint8List? result = await FlutterImageCompress.compressWithList(
       imageBytes,
       minWidth: 400,
@@ -37,27 +38,36 @@ class CloudinaryService {
     );
     final Uint8List compressed = result ?? imageBytes;
     debugPrint("  🗜 [frame_$index] ${imageBytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
-    return base64Encode(compressed);
+    return compressed;
   }
 
-  /// Upload a JSON payload to Cloudinary as a raw file
+  /// Upload JSON payload to Cloudinary as a raw file using MultipartFile.
+  /// public_id is capped at 50 chars to avoid display name limit errors.
   Future<String> _uploadJson({
     required Map<String, dynamic> jsonData,
     required String publicId,
     required String folder,
   }) async {
-    final String jsonString = jsonEncode(jsonData);
-    final String base64Json = base64Encode(utf8.encode(jsonString));
+    // Write JSON to a temp file — avoids base64 display name limit
+    final dir = await getTemporaryDirectory();
+    final File tempFile = File('${dir.path}/$publicId.json');
+    await tempFile.writeAsString(jsonEncode(jsonData));
 
-    final response = await http.post(
-      Uri.parse(_uploadUrl),
-      body: {
-        'file': 'data:application/json;base64,$base64Json',
-        'upload_preset': _uploadPreset,
-        'folder': folder,
-        'public_id': publicId,
-      },
-    );
+    final request = http.MultipartRequest('POST', Uri.parse(_uploadUrl))
+      ..fields['upload_preset'] = _uploadPreset
+      ..fields['folder'] = folder
+      ..fields['public_id'] = publicId
+      ..files.add(await http.MultipartFile.fromPath(
+        'file',
+        tempFile.path,
+        filename: '$publicId.json',
+      ));
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    // Clean up temp file
+    await tempFile.delete();
 
     if (response.statusCode != 200) {
       throw Exception('Cloudinary upload failed [$publicId]: ${response.body}');
@@ -75,7 +85,7 @@ class CloudinaryService {
   /// and the rest are silent frames captured in the background.
   ///
   /// [is_processed] = false signals the Python pipeline to process this entry.
-  Future<void> uploadTrainingData({
+  Future<String> uploadTrainingData({
     required Uint8List primaryImage,
     required List<Uint8List> silentFramesList,
     required int sugarValue,
@@ -95,7 +105,8 @@ class CloudinaryService {
 
       // 1. Compress and encode primary image
       debugPrint("☁️ Compressing primary image...");
-      final String primaryBase64 = await _compressPrimary(primaryImage);
+      final Uint8List primaryBytes = await _compressPrimary(primaryImage);
+      final String primaryBase64 = base64Encode(primaryBytes);
       debugPrint("✅ Primary encoded (${primaryBase64.length} chars)");
 
       // 2. Compress and encode silent frames sequentially
@@ -104,9 +115,10 @@ class CloudinaryService {
 
       for (int i = 0; i < silentFramesList.length; i++) {
         debugPrint("  ⏳ Encoding frame $i...");
-        final String frameBase64 = await _compressSilentFrame(silentFramesList[i], i);
-        imageBase64List.add(frameBase64);
-        debugPrint("  ✅ Frame $i encoded (${frameBase64.length} chars)");
+        final Uint8List frameBytes =
+            await _compressSilentFrame(silentFramesList[i], i);
+        imageBase64List.add(base64Encode(frameBytes));
+        debugPrint("  ✅ Frame $i encoded");
       }
 
       final int totalChars = imageBase64List.fold(0, (sum, s) => sum + s.length);
@@ -128,18 +140,22 @@ class CloudinaryService {
         "timestamp": timestamp,
       };
 
-      // 4. Upload to Cloudinary
-      final String docId = '${cleanUserId}_$timestamp';
-      debugPrint("☁️ Uploading JSON → $docId...");
+      // 4. Upload to Cloudinary — public_id max 50 chars
+      final String shortId = '${cleanUserId}_$timestamp';
+      final String publicId = shortId.length > 50
+          ? shortId.substring(shortId.length - 50)
+          : shortId;
 
-      await _uploadJson(
+      debugPrint("☁️ Uploading JSON → $publicId...");
+      final String url = await _uploadJson(
         jsonData: payload,
-        publicId: docId,
+        publicId: publicId,
         folder: 'training_data/$cleanUserId',
       );
 
       debugPrint("🚀 Upload complete! "
           "(1 primary + ${silentFramesList.length} silent frames)");
+      return url;
     } catch (e) {
       debugPrint("❌ Cloudinary Error: $e");
       rethrow;

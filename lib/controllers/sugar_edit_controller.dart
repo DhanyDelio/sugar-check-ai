@@ -71,14 +71,25 @@ class SugarEditController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Formula: (sugar_per_serving / serving_size) * total_size
+  /// Returns total sugar in grams.
+  /// If volume/weight fields are filled, uses formula: (sugar_per_serving / serving_size) * total_size.
+  /// If only sugar field is filled, uses that value directly as the total.
   int get calculatedTotalSugar {
     final double total = double.tryParse(totalController.text) ?? 0;
     final double perSajian = double.tryParse(perSajianController.text) ?? 0;
     final double gulaSajian = double.tryParse(gulaSajianController.text) ?? 0;
-    if (perSajian == 0) return 0;
-    return ((gulaSajian / perSajian) * total).round();
+
+    // Full formula mode
+    if (total > 0 && perSajian > 0) {
+      return ((gulaSajian / perSajian) * total).round();
+    }
+
+    // Simple mode — user only knows total sugar directly
+    return gulaSajian.round();
   }
+
+  /// True if the minimum required field (sugar content) is filled
+  bool get canSubmit => gulaSajianController.text.trim().isNotEmpty;
 
   /// JSON snapshot for local debugging or export
   Map<String, dynamic> toJson() {
@@ -113,13 +124,13 @@ class SugarEditController extends ChangeNotifier {
   Future<bool> uploadData(
     String userEmail,
     Uint8List originalOcr, {
-    void Function(double totalSugar)? onSuccess,
+    void Function(double totalSugar, String imageUrl)? onSuccess,
   }) async {
     isSaving = true;
     notifyListeners();
 
     try {
-      await _cloudinaryService.uploadTrainingData(
+      final String imageUrl = await _cloudinaryService.uploadTrainingData(
         primaryImage: originalOcr,
         silentFramesList: _silentFrames,
         sugarValue: calculatedTotalSugar,
@@ -131,7 +142,7 @@ class SugarEditController extends ChangeNotifier {
         aiConfidence: _aiConfidence,
         aiProductName: _aiProductName,
       );
-      onSuccess?.call(calculatedTotalSugar.toDouble());
+      onSuccess?.call(calculatedTotalSugar.toDouble(), imageUrl);
       return true;
     } catch (e) {
       debugPrint("❌ Upload Error: $e");

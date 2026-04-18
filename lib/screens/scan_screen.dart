@@ -68,8 +68,33 @@ class _ScanScreenState extends State<ScanScreen> {
                 top: 40,
                 left: 20,
                 child: IconButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => MainScreen.switchToHome(),
                   icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
+                ),
+              ),
+
+              // Gallery picker button
+              Positioned(
+                bottom: 52,
+                right: 40,
+                child: GestureDetector(
+                  onTap: _scannerLogic.isAnalyzing
+                      ? null
+                      : () => _scannerLogic.onGalleryPressed("test@gmail.com"),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white38, width: 1.5),
+                    ),
+                    child: const Icon(
+                      Icons.photo_library_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
                 ),
               ),
 
