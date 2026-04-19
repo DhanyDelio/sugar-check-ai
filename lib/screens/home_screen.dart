@@ -2,85 +2,80 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/activity_controller.dart';
 import '../controllers/sugar_provider.dart';
-import '../widgets/sugar_burn_widget.dart';
-import '../widgets/sugar_meter_widget.dart';
-import '../widgets/sugar_history_widget.dart';
+import '../widgets/consumption_log_widget.dart';
+import '../widgets/daily_sugar_card.dart';
+import '../widgets/step_target_widget.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  static const double _dailyLimit = 50.0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ActivityController>().startPassiveTracking();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF12121A),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Doctor Gula",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "Track your daily sugar intake",
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withOpacity(0.45),
-                ),
-              ),
-              const SizedBox(height: 24),
+        child: Consumer<SugarProvider>(
+          builder: (context, sugar, _) {
+            final double consumed = sugar.todayTotal;
+            final entries = sugar.todayEntries;
 
-              const SugarMeterWidget(),
-              const SizedBox(height: 16),
-
-              // Start walking button — appears when there's sugar to burn
-              Consumer2<SugarProvider, ActivityController>(
-                builder: (context, sugar, activity, _) {
-                  if (sugar.todayTotal <= 0 || activity.isTracking) {
-                    return const SizedBox.shrink();
-                  }
-                  return SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.tealAccent,
-                        side: const BorderSide(color: Colors.tealAccent),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.directions_walk, size: 18),
-                      label: Text(
-                        "Burn ${sugar.todayTotal.toStringAsFixed(1)}g with walking",
-                      ),
-                      onPressed: () =>
-                          activity.startTracking(sugar.todayTotal),
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Header ──────────────────────────────────────────────
+                  const Text(
+                    "Hello 👋",
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Daily Sugar Intake",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.45),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // ── Daily Sugar Card ─────────────────────────────────────
+                  DailySugarCard(
+                    consumed: consumed,
+                    limit: _dailyLimit,
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Step Target ──────────────────────────────────────────
+                  const StepTargetWidget(),
+                  const SizedBox(height: 24),
+
+                  // ── Today's Consumption ──────────────────────────────────
+                  ConsumptionLogWidget(entries: entries),
+                  const SizedBox(height: 16),
+                ],
               ),
-              const SizedBox(height: 16),
-
-              // Real-time burn meter
-              const SugarBurnWidget(),
-              const SizedBox(height: 28),
-
-              Text(
-                "Today's History",
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.8),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              const SugarHistoryWidget(),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

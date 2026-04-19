@@ -2,14 +2,21 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/sugar_entry.dart';
+import 'activity_controller.dart';
 
 class SugarProvider extends ChangeNotifier {
   final List<SugarEntry> _entries = [];
+  ActivityController? _activityController;
   static const String _storageKey = 'sugar_entries';
   static const double whoLimit = 50.0;
 
   SugarProvider() {
     _loadFromStorage();
+  }
+
+  /// Inject ActivityController so sugar changes auto-update step target
+  void setActivityController(ActivityController controller) {
+    _activityController = controller;
   }
 
   List<SugarEntry> get entries => todayEntries;
@@ -40,6 +47,8 @@ class SugarProvider extends ChangeNotifier {
     _entries.insert(0, entry);
     notifyListeners();
     _saveToStorage();
+    // Reactively update step target whenever sugar total changes
+    _activityController?.updateSugarTarget(todayTotal);
   }
 
   // ── Persistence ───────────────────────────────────────────────────────────

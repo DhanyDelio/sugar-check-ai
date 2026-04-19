@@ -53,23 +53,48 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
       listenable: _controller,
       builder: (context, _) {
         return Scaffold(
-          appBar: AppBar(title: const Text("Nutrition Input")),
+          backgroundColor: const Color(0xFF12121A),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF12121A),
+            elevation: 0,
+            title: const Text(
+              "Nutrition Input",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            iconTheme: const IconThemeData(color: Colors.white70),
+          ),
           body: Stack(
             children: [
               SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Captured photo preview
+                    // Photo preview
                     Center(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.memory(
-                          widget.ocrImage,
-                          width: 220,
-                          height: 220,
-                          fit: BoxFit.cover,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.tealAccent.withOpacity(0.1),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Image.memory(
+                            widget.ocrImage,
+                            width: 200,
+                            height: 200,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                     ),
@@ -84,90 +109,134 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Dynamic nutrition form
-                    DynamicNutritionForm(
-                      category: _controller.selectedCategory,
-                      productCtrl: _controller.productController,
-                      varianCtrl: _controller.varianController,
-                      totalCtrl: _controller.totalController,
-                      perSajianCtrl: _controller.perSajianController,
-                      gulaSajianCtrl: _controller.gulaSajianController,
-                      productHint: widget.suggestionName,
+                    // Form card
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E2E),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: DynamicNutritionForm(
+                        category: _controller.selectedCategory,
+                        productCtrl: _controller.productController,
+                        varianCtrl: _controller.varianController,
+                        totalCtrl: _controller.totalController,
+                        perSajianCtrl: _controller.perSajianController,
+                        gulaSajianCtrl: _controller.gulaSajianController,
+                        productHint: widget.suggestionName,
+                      ),
                     ),
                     const SizedBox(height: 12),
 
-                    // Google AI search shortcut
-                    SizedBox(
-                      width: double.infinity,
-                      child: GoogleAISearchButton(
-                        productCtrl: _controller.productController,
-                        varianCtrl: _controller.varianController,
-                        parentContext: context,
-                      ),
+                    // Google AI search
+                    GoogleAISearchButton(
+                      productCtrl: _controller.productController,
+                      varianCtrl: _controller.varianController,
+                      totalCtrl: _controller.totalController,
+                      parentContext: context,
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 16),
 
-                    // Calculated sugar preview
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.green.shade700),
-                      ),
-                      child: ListenableBuilder(
-                        listenable: Listenable.merge([
-                          _controller.totalController,
-                          _controller.perSajianController,
-                          _controller.gulaSajianController,
-                        ]),
-                        builder: (context, _) {
-                          return Text(
-                            "Total Sugar: ${_controller.calculatedTotalSugar}g",
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.greenAccent,
+                    // Sugar preview card
+                    ListenableBuilder(
+                      listenable: Listenable.merge([
+                        _controller.totalController,
+                        _controller.perSajianController,
+                        _controller.gulaSajianController,
+                      ]),
+                      builder: (context, _) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E1E2E),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.tealAccent.withOpacity(0.3),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.water_drop_outlined,
+                                  color: Colors.tealAccent, size: 20),
+                              const SizedBox(width: 10),
+                              Text(
+                                "Total Sugar: ",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white.withOpacity(0.6),
+                                ),
+                              ),
+                              Text(
+                                "${_controller.calculatedTotalSugar}g",
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.tealAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 28),
 
-                    // Confirm & upload button
-                    SizedBox(
-                      width: double.infinity,
-                      child: ListenableBuilder(
-                        listenable: _controller.gulaSajianController,
-                        builder: (context, _) {
-                          final bool canSubmit = _controller.canSubmit;
-                          return ElevatedButton.icon(
+                    // Confirm button
+                    ListenableBuilder(
+                      listenable: _controller.gulaSajianController,
+                      builder: (context, _) {
+                        final bool canSubmit = _controller.canSubmit;
+                        return SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: canSubmit
-                                  ? Colors.green
-                                  : Colors.grey.shade800,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                                  ? Colors.tealAccent
+                                  : Colors.white12,
+                              foregroundColor: canSubmit
+                                  ? const Color(0xFF12121A)
+                                  : Colors.white38,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(16),
                               ),
+                              elevation: canSubmit ? 4 : 0,
                             ),
                             icon: const Icon(Icons.cloud_upload_outlined),
-                            label: const Text("Confirm"),
+                            label: const Text(
+                              "Confirm & Upload",
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
                             onPressed: canSubmit
                                 ? () async {
-                                    final provider = context.read<SugarProvider>();
-                                    final bool success = await _controller.uploadData(
+                                    final provider =
+                                        context.read<SugarProvider>();
+                                    final bool success =
+                                        await _controller.uploadData(
                                       widget.userEmail,
                                       widget.ocrImage,
-                                      onSuccess: (totalSugar, imageUrl) {
+                                      onSuccess: (totalSugar, volumeTotal, imageUrl) {
+                                        final bool isBeverage = _controller.selectedCategory == ProductCategory.minuman;
+                                        final String unit = isBeverage ? 'ml' : 'g';
+                                        final String label = volumeTotal > 0
+                                            ? '${volumeTotal.toStringAsFixed(0)} $unit'
+                                            : '';
                                         provider.addEntry(SugarEntry(
-                                          id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                          brandName: _controller.productController.text,
-                                          variantName: _controller.varianController.text,
+                                          id: DateTime.now()
+                                              .millisecondsSinceEpoch
+                                              .toString(),
+                                          brandName: _controller
+                                              .productController.text,
+                                          variantName:
+                                              _controller.varianController.text,
                                           totalSugar: totalSugar,
+                                          volumeTotal: volumeTotal,
+                                          volumeLabel: label,
                                           imageBytes: widget.ocrImage,
                                           imageUrl: imageUrl,
                                           timestamp: DateTime.now(),
@@ -175,20 +244,21 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                                       },
                                     );
                                     if (success && mounted) {
-                                      Navigator.of(context).popUntil((r) => r.isFirst);
+                                      Navigator.of(context)
+                                          .popUntil((r) => r.isFirst);
                                       MainScreen.switchToHome();
                                     }
                                   }
                                 : null,
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
 
-              // Upload loading overlay
+              // Upload overlay
               if (_controller.isSaving)
                 const LoadingOverlay(
                   message: "Uploading data...",

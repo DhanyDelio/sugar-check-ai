@@ -124,10 +124,12 @@ class SugarEditController extends ChangeNotifier {
   Future<bool> uploadData(
     String userEmail,
     Uint8List originalOcr, {
-    void Function(double totalSugar, String imageUrl)? onSuccess,
+    void Function(double totalSugar, double volumeTotal, String imageUrl)? onSuccess,
   }) async {
     isSaving = true;
     notifyListeners();
+
+    final double volume = double.tryParse(totalController.text) ?? 0;
 
     try {
       final String imageUrl = await _cloudinaryService.uploadTrainingData(
@@ -136,13 +138,13 @@ class SugarEditController extends ChangeNotifier {
         sugarValue: calculatedTotalSugar,
         productName: productController.text,
         variantName: varianController.text,
-        volumeTotal: double.tryParse(totalController.text) ?? 0,
+        volumeTotal: volume,
         userId: userEmail,
         isHighPriority: isHighPriority,
         aiConfidence: _aiConfidence,
         aiProductName: _aiProductName,
       );
-      onSuccess?.call(calculatedTotalSugar.toDouble(), imageUrl);
+      onSuccess?.call(calculatedTotalSugar.toDouble(), volume, imageUrl);
       return true;
     } catch (e) {
       debugPrint("❌ Upload Error: $e");

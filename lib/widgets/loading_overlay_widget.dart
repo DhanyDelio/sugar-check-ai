@@ -15,7 +15,7 @@ class LoadingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black.withOpacity(0.72),
+      color: Colors.black.withValues(alpha: 0.72),
       child: Center(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 40),
@@ -23,7 +23,7 @@ class LoadingOverlay extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.green.withOpacity(0.4), width: 1),
+            border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 1),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,

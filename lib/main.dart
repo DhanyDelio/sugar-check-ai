@@ -23,6 +23,13 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => SugarProvider()),
         ChangeNotifierProvider(create: (_) => ActivityController()),
+        ChangeNotifierProxyProvider<ActivityController, SugarProvider>(
+          create: (_) => SugarProvider(),
+          update: (_, activity, sugar) {
+            sugar!.setActivityController(activity);
+            return sugar;
+          },
+        ),
       ],
       child: MaterialApp(
         title: 'Doctor Gula',
@@ -30,9 +37,24 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           brightness: Brightness.dark,
+          scaffoldBackgroundColor: const Color(0xFF12121A),
           colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.green,
+            seedColor: Colors.tealAccent,
             brightness: Brightness.dark,
+            surface: const Color(0xFF1E1E2E),
+          ),
+          navigationBarTheme: NavigationBarThemeData(
+            backgroundColor: const Color(0xFF1A1A2E),
+            indicatorColor: Colors.tealAccent.withOpacity(0.15),
+            labelTextStyle: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return const TextStyle(
+                    color: Colors.tealAccent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600);
+              }
+              return TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11);
+            }),
           ),
           useMaterial3: true,
         ),

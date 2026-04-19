@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../controllers/sugar_edit_controller.dart';
@@ -146,58 +145,12 @@ class DynamicNutritionForm extends StatelessWidget {
   }
 }
 
-// ── Image Selection Grid ──────────────────────────────────────────────────────
-
-class ImageSelectionGrid extends StatelessWidget {
-  final List<Uint8List> images;
-  final List<bool> selection;
-  final Function(int) onTap;
-
-  const ImageSelectionGrid({
-    super.key,
-    required this.images,
-    required this.selection,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemCount: images.length,
-      itemBuilder: (context, index) {
-        return GestureDetector(
-          onTap: () => onTap(index),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: selection[index] ? Colors.green : Colors.grey,
-                width: 3,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(5),
-              child: Image.memory(images[index], fit: BoxFit.cover),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 // ── Google AI Search Button ───────────────────────────────────────────────────
 
 class GoogleAISearchButton extends StatelessWidget {
   final TextEditingController productCtrl;
   final TextEditingController varianCtrl;
+  final TextEditingController? totalCtrl;
   final BuildContext parentContext;
 
   const GoogleAISearchButton({
@@ -205,11 +158,13 @@ class GoogleAISearchButton extends StatelessWidget {
     required this.productCtrl,
     required this.varianCtrl,
     required this.parentContext,
+    this.totalCtrl,
   });
 
   Future<void> _search() async {
     final String product = productCtrl.text.trim();
     final String variant = varianCtrl.text.trim();
+    final String volume = totalCtrl?.text.trim() ?? '';
 
     if (product.isEmpty) {
       ScaffoldMessenger.of(parentContext).showSnackBar(
@@ -231,7 +186,8 @@ class GoogleAISearchButton extends StatelessWidget {
       return;
     }
 
-    final String query = '$product $variant sugar content per serving';
+    final String volumePart = volume.isNotEmpty ? ' ${volume}ml' : '';
+    final String query = '$product $variant$volumePart sugar content per serving';
     final Uri url = Uri.parse(
       'https://www.google.com/search?q=${Uri.encodeComponent(query)}',
     );
