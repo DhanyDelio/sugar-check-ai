@@ -22,7 +22,7 @@ Indonesia has one of the highest rates of diabetes in Southeast Asia, yet most p
 
 ### Roadmap
 
-- **Activity Gamification** — Each sugar entry triggers a burn suggestion: *"Walk 12 minutes to offset this 10g."* Step progress tracked via accelerometer reduces the meter in real-time.
+- **Activity Gamification** — Each sugar entry triggers a "Burn with Walking" button. Tap it and the sugar meter decreases in real-time as you walk — 1 step burns 0.01g (based on 1g = 4 kcal, 1 step = 0.04 kcal). A live circular meter and step counter show progress toward the burn target. **Already implemented.**
 - **Weekly PDF Report** — Downloadable weekly summary: products consumed, daily sugar breakdown, and comparison against WHO limits.
 - **Personalized LLM Assistant** — A fine-tuned model trained on nutrition and diabetes data. Diabetic users can ask: *"Is this safe for me today?"* or *"How much sugar can I still have tonight?"* — turning the app from a passive tracker into a proactive health companion.
 
