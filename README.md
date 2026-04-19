@@ -4,6 +4,27 @@
 
 ---
 
+## Monorepo Structure
+
+```
+sugar-check-ai/                          ← root repo
+├── lib/                                 ← Flutter app source
+├── android/                             ← Android project
+├── assets/models/                       ← Bundled .tflite + labels.txt
+├── train_model_for_sugar_check_ai/      ← Python training pipeline
+│   ├── notebooks/
+│   │   ├── sugar_checker_collector.ipynb      # Step 1 — data collection
+│   │   ├── high_precision_clustering.ipynb    # Step 2 — image clustering
+│   │   └── sugar_checker_training.ipynb       # Step 3 — model training & export
+│   └── README.md                             # Full training guide
+├── .env.example
+└── README.md                            ← this file
+```
+
+> The training pipeline is part of this monorepo. See [`train_model_for_sugar_check_ai/README.md`](./train_model_for_sugar_check_ai/README.md) for the full step-by-step guide on how to collect data, cluster images, train the model, and deploy the `.tflite` to the app.
+
+---
+
 ## The Problem
 
 Indonesia has one of the highest rates of diabetes in Southeast Asia, yet most people have no practical way to track sugar intake in real time. Existing apps require manual lookup and offer no intelligence — Doctor Gula solves this with a camera-first, AI-driven approach.
@@ -61,14 +82,19 @@ Indonesia has one of the highest rates of diabetes in Southeast Asia, yet most p
 ### Folder Structure
 
 ```
-lib/
-├── controllers/        Business logic (camera, form, state)
-├── core/navigation/    Global NavigationService
-├── models/             Type-safe data models (SugarEntry, ScanResult)
-├── screens/            UI screens (Home, Scan, Edit)
-├── services/           External integrations (TFLite, Cloudinary, Camera)
-├── utils/              Helpers (YUV420→RGB conversion, label formatting)
-└── widgets/            Reusable components (LoadingOverlay, SugarMeter, etc.)
+sugar-check-ai/
+├── lib/
+│   ├── controllers/        Business logic (camera, form, state)
+│   ├── core/navigation/    Global NavigationService
+│   ├── models/             Type-safe data models (SugarEntry, ScanResult)
+│   ├── screens/            UI screens (Home, Scan, Edit)
+│   ├── services/           External integrations (TFLite, Cloudinary, Camera)
+│   ├── utils/              Helpers (YUV420→RGB conversion, label formatting)
+│   └── widgets/            Reusable components (LoadingOverlay, ConsumptionLog, etc.)
+├── assets/models/          Bundled .tflite + labels.txt (fallback model)
+└── train_model_for_sugar_check_ai/
+    ├── notebooks/          Google Colab notebooks (collect → cluster → train)
+    └── README.md           Step-by-step training guide
 ```
 
 ---
