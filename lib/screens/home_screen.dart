@@ -29,9 +29,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF12121A),
       body: SafeArea(
-        child: Consumer<SugarProvider>(
-          builder: (context, sugar, _) {
-            final double consumed = sugar.todayTotal;
+        child: Consumer2<SugarProvider, ActivityController>(
+          builder: (context, sugar, activity, _) {
+            // Net sugar = total intake minus what's already burned by walking
+            final double consumed =
+                (sugar.todayTotal - activity.burnedSugar).clamp(0.0, sugar.todayTotal);
             final entries = sugar.todayEntries;
 
             return SingleChildScrollView(
@@ -53,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     "Daily Sugar Intake",
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white.withOpacity(0.45),
+                      color: Colors.white.withValues(alpha: 0.45),
                     ),
                   ),
                   const SizedBox(height: 28),

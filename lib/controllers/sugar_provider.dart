@@ -14,9 +14,15 @@ class SugarProvider extends ChangeNotifier {
     _loadFromStorage();
   }
 
-  /// Inject ActivityController so sugar changes auto-update step target
+  /// Inject ActivityController so sugar changes auto-update step target.
+  /// Also immediately syncs the sugar target in case entries were already loaded.
   void setActivityController(ActivityController controller) {
     _activityController = controller;
+    // Sync target now that controller is available — covers the app-restart case
+    // where _loadFromStorage ran before this injection
+    if (todayTotal > 0) {
+      controller.updateSugarTarget(todayTotal);
+    }
   }
 
   List<SugarEntry> get entries => todayEntries;
