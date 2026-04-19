@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'screens/main_screen.dart';
 import 'core/navigation/navigation_service.dart';
 import 'controllers/sugar_provider.dart';
+import 'controllers/activity_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SugarProvider()),
+        ChangeNotifierProvider(create: (_) => ActivityController()),
       ],
       child: MaterialApp(
         title: 'Doctor Gula',

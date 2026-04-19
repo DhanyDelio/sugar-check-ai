@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../controllers/activity_controller.dart';
+import '../controllers/sugar_provider.dart';
+import '../widgets/sugar_burn_widget.dart';
 import '../widgets/sugar_meter_widget.dart';
 import '../widgets/sugar_history_widget.dart';
 
@@ -29,6 +33,39 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               const SugarMeterWidget(),
+              const SizedBox(height: 16),
+
+              // Start walking button — appears when there's sugar to burn
+              Consumer2<SugarProvider, ActivityController>(
+                builder: (context, sugar, activity, _) {
+                  if (sugar.todayTotal <= 0 || activity.isTracking) {
+                    return const SizedBox.shrink();
+                  }
+                  return SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.tealAccent,
+                        side: const BorderSide(color: Colors.tealAccent),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.directions_walk, size: 18),
+                      label: Text(
+                        "Burn ${sugar.todayTotal.toStringAsFixed(1)}g with walking",
+                      ),
+                      onPressed: () =>
+                          activity.startTracking(sugar.todayTotal),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Real-time burn meter
+              const SugarBurnWidget(),
               const SizedBox(height: 28),
 
               Text(
