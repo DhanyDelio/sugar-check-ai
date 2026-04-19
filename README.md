@@ -1,100 +1,156 @@
-# Doctor Gula — AI-Powered Sugar Intake Tracker
+<div align="center">
 
-> A Flutter mobile app that helps users — especially diabetics — monitor their daily sugar intake using on-device AI. Point the camera at any product packaging, and the app automatically detects the product and calculates total sugar content.
+# 🩺 Doctor Gula
+### AI-Powered Sugar Intake Tracker for Indonesia
+
+**Point your camera at any packaged food or drink — the app identifies the product, calculates total sugar, and tracks your daily intake against WHO limits in real time.**
+
+[![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter)](https://flutter.dev)
+[![TensorFlow Lite](https://img.shields.io/badge/TFLite-MobileNetV2-FF6F00?logo=tensorflow)](https://www.tensorflow.org/lite)
+[![Cloudinary](https://img.shields.io/badge/Cloudinary-Dataset%20Pipeline-3448C5)](https://cloudinary.com)
+[![Firebase](https://img.shields.io/badge/Firebase-ML%20Delivery-FFCA28?logo=firebase)](https://firebase.google.com)
+[![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android)](https://android.com)
+
+</div>
+
+---
+
+## The Problem
+
+Indonesia ranks among the top 10 countries globally for diabetes prevalence. Yet most people have no practical, real-time way to track sugar intake — existing apps require manual lookup, offer no intelligence, and are built for Western markets.
+
+**Doctor Gula** solves this with a camera-first, AI-driven approach built specifically for Indonesian packaged products.
+
+---
+
+## What It Does
+
+| | Feature | Detail |
+|---|---|---|
+| 🤖 | **On-Device AI Recognition** | MobileNetV2 (TFLite) identifies product brands from packaging photos — no internet required for inference |
+| 📊 | **Real-Time Sugar Meter** | Circular progress indicator tracks daily intake against the WHO 50g/day limit with color-coded alerts |
+| 🚶 | **Sugar Burn Tracker** | Pedometer integration — sugar meter decreases in real time as you walk (1g = 100 steps, based on 1g = 4 kcal, 1 step = 0.04 kcal) |
+| 📋 | **Smart Nutrition Form** | Dynamic form adapts fields for beverages (volume in ml) vs. food (weight in g) with auto-calculated total sugar |
+| 📸 | **Silent Dataset Capture** | 9 background frames captured per scan session, auto-compressed and uploaded to retrain the model |
+| 🔍 | **Contextual Google Search** | One-tap search pre-filled with product name, variant, and volume for quick sugar lookup |
+| 📅 | **Consumption History** | Per-entry cards showing time, product, volume, and sugar — persisted locally with smart daily reset |
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         Flutter App (Dart)                        │
+│                                                                    │
+│   CameraScreen                                                     │
+│       │                                                            │
+│       ├─ CameraController ──► TFLiteService                       │
+│       │        │                    │                              │
+│       │   Silent Frames (9x)   Inference Result                   │
+│       │        │                    │                              │
+│       └────────┴────────► SugarEditScreen                         │
+│                                 │                                  │
+│                          SugarEditController                       │
+│                           │            │                           │
+│                    SugarProvider   CloudinaryService               │
+│                    (local state)   (upload JSON pkg)               │
+│                           │                                        │
+│                    ActivityController                              │
+│                    (pedometer + burn calc)                         │
+└──────────────────────────────────────────────────────────────────┘
+                              │
+                    ┌─────────▼──────────┐
+                    │  Cloudinary Storage │
+                    │  JSON + Base64 imgs │
+                    └─────────┬──────────┘
+                              │
+                    ┌─────────▼──────────┐
+                    │  Python Pipeline    │
+                    │  (Google Colab)     │
+                    │                     │
+                    │  Collect → Cluster  │
+                    │  → Train → Export   │
+                    └─────────┬──────────┘
+                              │
+                    ┌─────────▼──────────┐
+                    │  Firebase ML        │
+                    │  Model Downloader   │
+                    │  (OTA model update) │
+                    └─────────┬──────────┘
+                              │
+                    ┌─────────▼──────────┐
+                    │  Flutter App        │
+                    │  auto-downloads     │
+                    │  updated .tflite    │
+                    └────────────────────┘
+```
+
+### Key Design Decisions
+
+**Why Cloudinary for dataset storage?**
+Each scan uploads a single JSON package containing Base64-encoded images + metadata. This keeps the pipeline serverless — no backend needed. The Python training script queries Cloudinary for all unprocessed entries (`is_processed: false`), downloads them, retrains, and marks them processed.
+
+**Why Firebase only for model delivery?**
+Firebase ML Model Downloader handles OTA model updates without requiring a new app release. The bundled `.tflite` in `assets/models/` serves as a fallback if the remote model hasn't downloaded yet.
+
+**Why Provider + ChangeNotifier?**
+The app has three reactive data streams: sugar entries, step count, and burn progress. Provider keeps these decoupled and testable without the overhead of BLoC or Riverpod for a project of this scope.
 
 ---
 
 ## Monorepo Structure
 
 ```
-sugar-check-ai/                          ← root repo
-├── lib/                                 ← Flutter app source
-├── android/                             ← Android project
-├── assets/models/                       ← Bundled .tflite + labels.txt
-├── train_model_for_sugar_check_ai/      ← Python training pipeline
+sugar-check-ai/
+│
+├── lib/
+│   ├── controllers/          # Business logic — camera, form, sugar state, activity
+│   │   ├── camera_controller.dart
+│   │   ├── sugar_edit_controller.dart
+│   │   ├── sugar_provider.dart
+│   │   └── activity_controller.dart
+│   │
+│   ├── models/               # Type-safe data models
+│   │   ├── sugar_entry.dart  # id, brandName, totalSugar, volumeTotal, volumeLabel
+│   │   └── scan_result.dart
+│   │
+│   ├── screens/              # Full-page UI
+│   │   ├── home_screen.dart
+│   │   ├── scan_screen.dart
+│   │   ├── sugar_edit_screen.dart
+│   │   └── main_screen.dart
+│   │
+│   ├── services/             # External integrations
+│   │   ├── tflite_service.dart       # MobileNetV2 inference
+│   │   ├── cloudinary_service.dart   # Dataset upload pipeline
+│   │   └── camera_service.dart
+│   │
+│   ├── widgets/              # Reusable UI components
+│   │   ├── consumption_log_widget.dart   # Today's horizontal card list
+│   │   ├── daily_sugar_card.dart         # Animated circular progress
+│   │   ├── step_target_widget.dart       # Steps-to-burn progress bar
+│   │   ├── loading_overlay_widget.dart
+│   │   └── sugar_edit_widgets.dart
+│   │
+│   └── utils/                # Helpers
+│       ├── yuv_converter.dart    # YUV420 → RGB for camera frames
+│       └── string_utils.dart
+│
+├── assets/models/
+│   ├── model.tflite          # Bundled fallback model (MobileNetV2, 16 classes)
+│   └── labels.txt
+│
+├── train_model_for_sugar_check_ai/   # Python training pipeline (monorepo)
 │   ├── notebooks/
 │   │   ├── sugar_checker_collector.ipynb      # Step 1 — data collection
 │   │   ├── high_precision_clustering.ipynb    # Step 2 — image clustering
-│   │   └── sugar_checker_training.ipynb       # Step 3 — model training & export
-│   └── README.md                             # Full training guide
+│   │   └── sugar_checker_training.ipynb       # Step 3 — train & export .tflite
+│   └── README.md             # Full training guide
+│
+├── android/
 ├── .env.example
-└── README.md                            ← this file
-```
-
-> The training pipeline is part of this monorepo. See [`train_model_for_sugar_check_ai/README.md`](./train_model_for_sugar_check_ai/README.md) for the full step-by-step guide on how to collect data, cluster images, train the model, and deploy the `.tflite` to the app.
-
----
-
-## The Problem
-
-Indonesia has one of the highest rates of diabetes in Southeast Asia, yet most people have no practical way to track sugar intake in real time. Existing apps require manual lookup and offer no intelligence — Doctor Gula solves this with a camera-first, AI-driven approach.
-
----
-
-## Features
-
-| Feature | Description |
-|---|---|
-| 🤖 AI Product Detection | MobileNetV2 (TFLite) recognizes packaged products from camera photos |
-| 📊 Sugar Meter | Real-time daily sugar tracking with WHO limit indicator (50g/day) |
-| 📋 Smart Nutrition Form | Dynamic form adapts fields for beverages (ml) and food (g) |
-| 📸 Silent Dataset Capture | 9 background frames captured per session, auto-uploaded for model retraining |
-| 🔍 Google AI Search | One-tap shortcut to look up sugar content via Google |
-
-### Roadmap
-
-- **Activity Gamification** — Each sugar entry triggers a "Burn with Walking" button. Tap it and the sugar meter decreases in real-time as you walk — 1 step burns 0.01g (based on 1g = 4 kcal, 1 step = 0.04 kcal). A live circular meter and step counter show progress toward the burn target. **Already implemented.**
-- **Weekly PDF Report** — Downloadable weekly summary: products consumed, daily sugar breakdown, and comparison against WHO limits.
-- **Personalized LLM Assistant** — A fine-tuned model trained on nutrition and diabetes data. Diabetic users can ask: *"Is this safe for me today?"* or *"How much sugar can I still have tonight?"* — turning the app from a passive tracker into a proactive health companion.
-
----
-
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                   Flutter App                        │
-│                                                      │
-│  ScanScreen → CameraController → TfliteService       │
-│       ↓               ↓                              │
-│  SugarEditScreen   Silent Frames (9x)                │
-│       ↓               ↓                              │
-│  SugarEditController → CloudinaryService             │
-│       ↓                      ↓                       │
-│  SugarProvider          JSON Package Upload          │
-│  (local state)      (Base64 images + metadata)       │
-└─────────────────────────────────────────────────────┘
-         ↓
-┌─────────────────────────────────────────────────────┐
-│              Dataset Pipeline (Python)               │
-│                                                      │
-│  Cloudinary → Download JSON → Decode Base64          │
-│  → Save images → Label → Retrain MobileNetV2         │
-│  → Export .tflite → Upload to Firebase ML            │
-└─────────────────────────────────────────────────────┘
-         ↓
-┌─────────────────────────────────────────────────────┐
-│           App auto-downloads updated model           │
-│         via Firebase ML Model Downloader             │
-└─────────────────────────────────────────────────────┘
-```
-
-### Folder Structure
-
-```
-sugar-check-ai/
-├── lib/
-│   ├── controllers/        Business logic (camera, form, state)
-│   ├── core/navigation/    Global NavigationService
-│   ├── models/             Type-safe data models (SugarEntry, ScanResult)
-│   ├── screens/            UI screens (Home, Scan, Edit)
-│   ├── services/           External integrations (TFLite, Cloudinary, Camera)
-│   ├── utils/              Helpers (YUV420→RGB conversion, label formatting)
-│   └── widgets/            Reusable components (LoadingOverlay, ConsumptionLog, etc.)
-├── assets/models/          Bundled .tflite + labels.txt (fallback model)
-└── train_model_for_sugar_check_ai/
-    ├── notebooks/          Google Colab notebooks (collect → cluster → train)
-    └── README.md           Step-by-step training guide
+└── README.md
 ```
 
 ---
@@ -103,83 +159,78 @@ sugar-check-ai/
 
 | Property | Value |
 |---|---|
-| Architecture | MobileNetV2 (transfer learning) |
-| Input | 224×224 RGB, normalized to [-1, 1] |
+| Architecture | MobileNetV2 + custom classification head |
+| Input | 224 × 224 × 3, normalized to `[-1, 1]` |
 | Preprocessing | Center-crop 1:1 → resize → MobileNetV2 normalization |
-| Confidence threshold | 50% — below this, field is left empty for manual input |
-| Deployment | Firebase ML Model Downloader (remote) + bundled `.tflite` (fallback) |
-| Retraining trigger | `is_processed: false` flag in Cloudinary JSON, consumed by Python pipeline |
+| Output | Softmax over 16 Indonesian product classes |
+| Confidence threshold | 50% — below this, product field is left blank for manual input |
+| Val accuracy | ~93% (Phase 3, 250 labeled images) |
+| Deployment | Firebase ML (remote, OTA) + bundled `.tflite` (fallback) |
 
-### Current Model — Recognized Brands (v1)
+### Recognized Brands (v1 — 16 classes)
 
-The current model is a **brand-level classifier** — it identifies the product brand from packaging photos. Variant recognition (e.g. *Oreo Thins*, *Teh Botol Less Sugar*) is planned for the next training cycle as more labeled data is collected.
+> Brand-level classification. Variant recognition (*Oreo Thins*, *Teh Botol Less Sugar*) is the next training milestone as the dataset grows.
 
-| # | Brand |
-|---|---|
-| 0 | Adem Sari |
-| 1 | Dum Dum |
-| 2 | Frisian Flag |
-| 3 | Hatari |
-| 4 | Indomaret |
-| 5 | Indomie |
-| 6 | Indomilk |
-| 7 | Interbis |
-| 8 | Nola |
-| 9 | Oatside |
-| 10 | Oreo |
-| 11 | Teh Botol Sosro |
-| 12 | Cokelat Cadbury |
-| 13 | Cokelat Delfi |
-| 14 | Cokelat SilverQueen |
-| 15 | Susu Ultra Milk |
+`Adem Sari` · `Dum Dum` · `Frisian Flag` · `Hatari` · `Indomaret` · `Indomie` · `Indomilk` · `Interbis` · `Nola` · `Oatside` · `Oreo` · `Teh Botol Sosro` · `Cokelat Cadbury` · `Cokelat Delfi` · `Cokelat SilverQueen` · `Susu Ultra Milk`
 
-> The dataset grows automatically with every user scan. Each confirmed entry contributes labeled images back into the training pipeline, making the model progressively more accurate over time.
+### Self-Improving Dataset Loop
 
-### False Positive Detection
+Every confirmed scan feeds back into the training pipeline:
 
-If AI confidence ≥ 80% but the user corrects the product name, the entry is flagged as `user_corrected: true` — marking it as high-priority training data for the next retraining cycle.
-
----
-
-## Dataset Pipeline
-
-Every confirmed scan automatically:
-1. Compresses primary photo (800px, quality 45) + 9 silent frames (400px, quality 30)
-2. Encodes all images to Base64
-3. Uploads a single JSON package to Cloudinary:
-
-```json
+```
+User scans product
+      ↓
+App captures 1 primary photo + 9 silent background frames
+      ↓
+Compressed (primary: 800px/q45, frames: 400px/q30) → Base64 encoded
+      ↓
+Single JSON package uploaded to Cloudinary:
 {
-  "product_name": "Coca-Cola",
+  "product_name": "Teh Botol Sosro",
   "variant_name": "Original",
-  "volume_total": 330,
-  "sugar_content": 35.0,
-  "ai_confidence": 91.2,
-  "user_corrected": false,
-  "image_base64_list": ["...primary...", "...frame_0...", "...frame_1..."],
-  "is_processed": false,
-  "timestamp": "1776321816757"
+  "volume_total": 350,
+  "sugar_content": 18,
+  "ai_confidence": 87.4,
+  "user_corrected": false,   ← true if user fixed AI's prediction
+  "is_processed": false,     ← Python pipeline picks this up
+  "image_base64_list": [...]
 }
+      ↓
+Python script queries is_processed=false → decode → label → retrain
+      ↓
+New .tflite pushed via Firebase ML → app auto-downloads
 ```
 
-The Python script queries all entries where `is_processed == false`, downloads and decodes the images, retrains the model, and marks entries as processed.
-
-The training pipeline lives in the [`train_model_for_sugar_check_ai/`](./train_model_for_sugar_check_ai) directory of this monorepo.
+**False positive detection:** If AI confidence ≥ 80% but the user corrects the product name, the entry is flagged `user_corrected: true` — prioritized in the next retraining cycle as high-signal training data.
 
 ---
 
-## Why Cloudinary?
+## Tech Stack
 
-The entire data pipeline — images and metadata — is stored in Cloudinary as structured JSON packages. This keeps the architecture lean and cost-efficient during development, while still being scalable. Firebase is retained solely for ML Model Downloader, which handles distributing updated `.tflite` models to the app without requiring a new release.
+| Layer | Technology | Why |
+|---|---|---|
+| Framework | Flutter 3 (Dart) | Single codebase, smooth 60fps UI, strong typing |
+| AI Inference | TFLite Flutter | On-device, no latency, works offline |
+| Model Delivery | Firebase ML Model Downloader | OTA updates without app store release |
+| Image Processing | `image` + `flutter_image_compress` | YUV→RGB conversion + multi-level compression |
+| Cloud Storage | Cloudinary | Serverless dataset pipeline, free tier sufficient |
+| State Management | Provider + ChangeNotifier | Lightweight, reactive, no boilerplate |
+| Pedometer | `pedometer` package | Real-time step count for sugar burn tracking |
+| Local Storage | `shared_preferences` | Persist daily entries with smart midnight reset |
+| Environment | `flutter_dotenv` | Keeps secrets out of source control |
 
-| Layer | Technology |
-|---|---|
-| Framework | Flutter 3 (Dart) |
-| AI Inference | TFLite Flutter + Firebase ML Model Downloader |
-| Image Processing | `image` + `flutter_image_compress` |
-| Cloud Storage | Cloudinary (unsigned upload preset) |
-| State Management | Provider + ChangeNotifier |
-| Environment Config | `flutter_dotenv` |
+---
+
+## Roadmap
+
+- [x] On-device AI product recognition (MobileNetV2 TFLite)
+- [x] Real-time sugar meter with WHO limit
+- [x] Silent dataset capture + Cloudinary upload pipeline
+- [x] Sugar burn tracker with live pedometer integration
+- [x] Consumption history with per-entry volume display
+- [ ] **Weekly PDF Report** — daily sugar breakdown vs. WHO limits, exportable
+- [ ] **Variant Recognition** — distinguish *Indomie Goreng* from *Indomie Kuah* etc.
+- [ ] **Personalized LLM Assistant** — fine-tuned on nutrition + diabetes data, answers *"Is this safe for me today?"*
 
 ---
 
@@ -192,23 +243,40 @@ cd sugar-check-ai
 flutter pub get
 ```
 
-### 2. Configure environment
+### 2. Environment
 ```bash
 cp .env.example .env
+# Fill in your Cloudinary credentials
 ```
-```
+
+```env
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_UPLOAD_PRESET=your_unsigned_preset
 ```
 
 ### 3. Firebase
 - Add `google-services.json` to `android/app/`
-- Configure Firebase ML Model Downloader in your Firebase project
+- Enable **ML Kit** and **ML Model Downloader** in your Firebase project
+- Upload `model.tflite` to Firebase ML with the model name `sugar_checker`
 
 ### 4. Run
 ```bash
 flutter run
 ```
+
+---
+
+## Training Your Own Model
+
+The full training pipeline lives in [`train_model_for_sugar_check_ai/`](./train_model_for_sugar_check_ai).
+
+Three Google Colab notebooks take you from zero to a deployed `.tflite`:
+
+1. **Collector** — downloads 4,000+ product images from OpenFoodFacts + web crawl
+2. **Clustering** — EfficientNetB0 + agglomerative clustering groups images by visual similarity, replacing manual sorting
+3. **Training** — MobileNetV2 fine-tuning with class balancing, augmentation, and TFLite export
+
+See [`train_model_for_sugar_check_ai/README.md`](./train_model_for_sugar_check_ai/README.md) for the complete step-by-step guide.
 
 ---
 
@@ -219,4 +287,10 @@ flutter run
 | `CLOUDINARY_CLOUD_NAME` | Cloud name from Cloudinary Dashboard |
 | `CLOUDINARY_UPLOAD_PRESET` | Unsigned upload preset (Settings → Upload) |
 
-> `.env` is in `.gitignore` — never commit this file. Use `.env.example` as a template.
+> `.env` is gitignored. Never commit it. Use `.env.example` as the template.
+
+---
+
+<div align="center">
+Built for Indonesia 🇮🇩 · Flutter + TFLite + Python
+</div>
