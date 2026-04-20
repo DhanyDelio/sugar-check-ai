@@ -18,12 +18,6 @@ class SugarProvider extends ChangeNotifier {
   /// Also immediately syncs the sugar target in case entries were already loaded.
   void setActivityController(ActivityController controller) {
     _activityController = controller;
-    // Sync target after current build frame completes — avoids setState during build
-    if (todayTotal > 0) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.updateSugarTarget(todayTotal);
-      });
-    }
   }
 
   List<SugarEntry> get entries => todayEntries;
@@ -51,11 +45,33 @@ class SugarProvider extends ChangeNotifier {
   }
 
   void addEntry(SugarEntry entry) {
-    _entries.insert(0, entry);
+    // Apply sugar credit offset — credit is consumed here, not in real-time.
+    // rawSugarGrams is preserved; appliedCredit records how much was offset.
+    double appliedCredit = 0;
+    if (_activityController != null) {
+      final double raw = entry.rawSugarGrams;
+      final double net = _activityController!.processSugarIntake(raw);
+      appliedCredit = (raw - net).clamp(0.0, raw);
+    }
+
+    final SugarEntry finalEntry = appliedCredit > 0
+        ? SugarEntry(
+            id: entry.id,
+            brandName: entry.brandName,
+            variantName: entry.variantName,
+            rawSugarGrams: entry.rawSugarGrams,
+            appliedCredit: appliedCredit,
+            volumeTotal: entry.volumeTotal,
+            volumeLabel: entry.volumeLabel,
+            imageBytes: entry.imageBytes,
+            imageUrl: entry.imageUrl,
+            timestamp: entry.timestamp,
+          )
+        : entry;
+
+    _entries.insert(0, finalEntry);
     notifyListeners();
     _saveToStorage();
-    // Reactively update step target whenever sugar total changes
-    _activityController?.updateSugarTarget(todayTotal);
   }
 
   // ── Persistence ───────────────────────────────────────────────────────────

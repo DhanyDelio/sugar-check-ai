@@ -234,7 +234,7 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                                               .productController.text,
                                           variantName:
                                               _controller.varianController.text,
-                                          totalSugar: totalSugar,
+                                          rawSugarGrams: totalSugar,
                                           volumeTotal: volumeTotal,
                                           volumeLabel: label,
                                           imageBytes: widget.ocrImage,

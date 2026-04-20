@@ -136,7 +136,7 @@ class _LogCard extends StatelessWidget {
           else
             const SizedBox.shrink(),
 
-          // Sugar badge
+          // Sugar badge — shows raw label sugar so user can verify against packaging
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -144,7 +144,7 @@ class _LogCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              "${entry.totalSugar.toStringAsFixed(0)}g",
+              "${entry.rawSugarGrams.toStringAsFixed(0)}g",
               style: const TextStyle(
                 fontSize: 11,
                 color: Colors.tealAccent,

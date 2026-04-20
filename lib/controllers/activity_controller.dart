@@ -4,78 +4,130 @@ import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 1g sugar = 4 kcal, 1 step = 0.04 kcal → 100 steps per gram
-const double _stepsPerGram = 100.0;
-const double _gramsPerStep = 1.0 / _stepsPerGram;
+// ─────────────────────────────────────────────────────────────────────────────
+// MEDICAL SAFETY CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
 
-const _keyTotalSugar   = 'activity_total_sugar';
-const _keySessionSteps = 'activity_session_steps';
-const _keySavedDate    = 'activity_saved_date'; // YYYY-MM-DD
+/// WHO reference: maximum safe daily sugar intake.
+const double kMaxDailyLimit = 50.0;
 
+/// WHO reference: ideal/recommended daily sugar intake.
+const double kIdealDailyLimit = 25.0;
+
+/// Conservative conversion: 1000 steps = 1 gram of sugar offset.
+///
+/// Rationale: A more aggressive ratio (e.g. 100:1) risks over-estimating
+/// caloric burn from low-intensity activity, which could encourage
+/// compensatory over-consumption of sugar. 1000:1 is intentionally
+/// conservative to prioritise medical safety over user convenience.
+const double _stepsPerGram = 1000.0;
+
+/// Maximum sugar credit earnable per day: 15 grams.
+///
+/// Safety cap rationale: Even with high step counts, we cap the offset at 15g
+/// (30% of WHO max limit). This prevents "exercise compensation" behaviour —
+/// the well-documented tendency to over-eat after exercise. The cap ensures
+/// the app never implicitly endorses consuming more than the WHO limit.
+const double _maxCreditGrams = 15.0;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSISTENCE KEYS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _keySessionSteps  = 'activity_session_steps';
+const _keyUsedCredit    = 'activity_used_credit';
+const _keySavedDate     = 'activity_saved_date'; // YYYY-MM-DD
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ActivityController
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Manages step tracking and the hidden Sugar Credit system.
+///
+/// FLOW:
+///   Steps accumulate → converted to sugarCredit (capped at 15g, hidden from UI)
+///   On scan → SugarProvider calls processSugarIntake()
+///            → credit offsets scanned grams before they hit the meter
+///            → only the net amount (scanned - credit) enters the visible meter
+///
+/// The meter never decreases in real-time as the user walks.
+/// Credit is only consumed at the moment of a product scan.
 class ActivityController extends ChangeNotifier {
+  /// Medical disclaimer — must be surfaced in any health-related UI.
+  static const String medicalDisclaimer =
+      'Doctor Gula adalah alat bantu edukasi kesehatan. '
+      'Informasi yang ditampilkan bukan pengganti saran, diagnosis, '
+      'atau pengobatan dari tenaga medis profesional. '
+      'Selalu konsultasikan kondisi kesehatan Anda dengan dokter.';
+
   StreamSubscription<StepCount>? _stepSubscription;
 
-  double _totalSugar = 0;
-  int _sessionSteps = 0;
-  int _pedometerBaseline = 0;
-  bool _isTracking = false;
-  bool _hasPermission = false;
+  int    _sessionSteps = 0;
+  double _usedCredit   = 0; // grams of credit already consumed by scans today
+  int    _pedometerBaseline = 0;
+  bool   _isTracking   = false;
+  bool   _hasPermission = false;
 
   // ── Getters ───────────────────────────────────────────────────────────────
 
-  double get initialSugar  => _totalSugar;
-  int    get sessionSteps  => _sessionSteps;
-  bool   get isTracking    => _isTracking;
+  int get sessionSteps => _sessionSteps;
+  bool get isTracking  => _isTracking;
 
-  /// Steps needed to burn all current sugar
-  int get targetSteps => (_totalSugar * _stepsPerGram).round();
+  /// Total credit earned from steps today (before usage), capped at 15g.
+  double get earnedCredit =>
+      (_sessionSteps / _stepsPerGram).clamp(0.0, _maxCreditGrams);
 
-  /// Steps still needed (never below 0)
-  int get remainingSteps =>
-      (targetSteps - _sessionSteps).clamp(0, targetSteps);
+  /// Credit still available to offset the next scan.
+  double get availableCredit => (earnedCredit - _usedCredit).clamp(0.0, _maxCreditGrams);
 
-  /// Sugar already burned by steps taken
-  double get burnedSugar =>
-      (_sessionSteps * _gramsPerStep).clamp(0.0, _totalSugar);
+  /// Steps still needed to reach the daily credit cap (15g = 15,000 steps).
+  int get stepsToMaxCredit =>
+      ((_maxCreditGrams - earnedCredit) * _stepsPerGram).round().clamp(0, 15000);
 
-  /// Sugar still remaining after steps
-  double get remainingSugar =>
-      (_totalSugar - burnedSugar).clamp(0.0, _totalSugar);
+  /// Progress toward the credit cap (0.0 → 1.0).
+  double get creditProgress => (earnedCredit / _maxCreditGrams).clamp(0.0, 1.0);
 
-  /// Progress of steps vs target (0.0 → 1.0)
-  double get stepProgress =>
-      targetSteps > 0
-          ? (_sessionSteps / targetSteps).clamp(0.0, 1.0)
-          : 0.0;
-
-  bool get isFullyBurned => _totalSugar > 0 && remainingSugar <= 0;
+  bool get isCreditCapped => earnedCredit >= _maxCreditGrams;
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /// Called every time sugar total changes (new scan confirmed).
-  /// Steps already taken are preserved — target just increases.
-  void updateSugarTarget(double totalSugar) {
-    _totalSugar = totalSugar;
-    _persist();
-    debugPrint(
-        "🎯 Sugar target updated: ${totalSugar}g → $targetSteps steps needed");
-    notifyListeners();
+  /// Called by SugarProvider when user confirms a scan.
+  ///
+  /// Returns the NET grams that should be added to the visible sugar meter
+  /// after applying available credit as an offset.
+  ///
+  /// Example:
+  ///   availableCredit = 5g, scannedGrams = 18g → returns 13g, credit used = 5g
+  ///   availableCredit = 20g (capped to 15g), scannedGrams = 10g → returns 0g, credit used = 10g
+  double processSugarIntake(double scannedGrams) {
+    final double credit = availableCredit;
 
-    // Start pedometer only if not already streaming
-    if (!_isTracking || _stepSubscription == null) {
-      _requestPermission().then((_) {
-        if (_hasPermission) _startPedometer();
-      });
+    if (credit <= 0) {
+      // No credit available — full amount hits the meter
+      return scannedGrams;
     }
+
+    if (credit >= scannedGrams) {
+      // Credit fully covers this scan — meter gets 0
+      _usedCredit += scannedGrams;
+      _persist();
+      notifyListeners();
+      return 0.0;
+    }
+
+    // Partial offset — meter gets the remainder
+    _usedCredit += credit;
+    _persist();
+    notifyListeners();
+    return scannedGrams - credit;
   }
 
   /// Start step tracking (called on app init).
-  /// Also restores persisted state from previous session.
+  /// Restores persisted state and starts the pedometer stream.
   Future<void> startPassiveTracking() async {
     await _restoreState();
     await _requestPermission();
     if (!_hasPermission) return;
-    // Always start/restart pedometer stream on app init
     _startPedometer();
   }
 
@@ -87,21 +139,24 @@ class ActivityController extends ChangeNotifier {
       final String today = _todayKey();
       final String? savedDate = prefs.getString(_keySavedDate);
 
-      // Smart reset: if saved date is not today, discard step progress
-      // but keep sugar target (entries are still today's)
       if (savedDate != today) {
-        debugPrint("🔄 New day — resetting session steps");
+        // Midnight reset — new day, clear all daily data
+        debugPrint("🔄 New day — resetting sugar credit and steps");
         await prefs.remove(_keySessionSteps);
+        await prefs.remove(_keyUsedCredit);
         await prefs.setString(_keySavedDate, today);
         _sessionSteps = 0;
+        _usedCredit   = 0;
       } else {
-        _sessionSteps = prefs.getInt(_keySessionSteps) ?? 0;
+        _sessionSteps = prefs.getInt(_keySessionSteps)    ?? 0;
+        _usedCredit   = prefs.getDouble(_keyUsedCredit)   ?? 0;
       }
 
-      _totalSugar = prefs.getDouble(_keyTotalSugar) ?? 0;
-
       debugPrint(
-          "📦 Restored activity: sugar=${_totalSugar}g steps=$_sessionSteps");
+          "📦 Restored activity: steps=$_sessionSteps "
+          "earnedCredit=${earnedCredit.toStringAsFixed(2)}g "
+          "usedCredit=${_usedCredit.toStringAsFixed(2)}g "
+          "availableCredit=${availableCredit.toStringAsFixed(2)}g");
       notifyListeners();
     } catch (e) {
       debugPrint("❌ Activity restore error: $e");
@@ -111,9 +166,9 @@ class ActivityController extends ChangeNotifier {
   Future<void> _persist() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_keyTotalSugar, _totalSugar);
-      await prefs.setInt(_keySessionSteps, _sessionSteps);
-      await prefs.setString(_keySavedDate, _todayKey());
+      await prefs.setInt(_keySessionSteps,    _sessionSteps);
+      await prefs.setDouble(_keyUsedCredit,   _usedCredit);
+      await prefs.setString(_keySavedDate,    _todayKey());
     } catch (e) {
       debugPrint("❌ Activity persist error: $e");
     }
@@ -121,7 +176,9 @@ class ActivityController extends ChangeNotifier {
 
   String _todayKey() {
     final now = DateTime.now();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    return '${now.year}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
   }
 
   // ── Internal ──────────────────────────────────────────────────────────────
@@ -137,7 +194,7 @@ class ActivityController extends ChangeNotifier {
       onError: (e) => debugPrint("❌ Pedometer error: $e"),
       cancelOnError: false,
     );
-    debugPrint("👟 Step tracking started");
+    debugPrint("👟 Step tracking started (1000 steps = 1g credit, cap 15g)");
   }
 
   void _onStep(StepCount event) {

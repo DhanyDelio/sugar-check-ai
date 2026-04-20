@@ -31,9 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Consumer2<SugarProvider, ActivityController>(
           builder: (context, sugar, activity, _) {
-            // Net sugar = total intake minus what's already burned by walking
-            final double consumed =
-                (sugar.todayTotal - activity.burnedSugar).clamp(0.0, sugar.todayTotal);
+            // Sugar meter shows net consumed — credit already deducted at scan time
+            final double consumed = sugar.todayTotal;
             final entries = sugar.todayEntries;
 
             return SingleChildScrollView(

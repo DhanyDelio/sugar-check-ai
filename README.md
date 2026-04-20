@@ -125,10 +125,10 @@ Once the model identifies the product, the rest of the app takes over:
 
 | | Feature | Detail |
 |---|---|---|
-| 📊 | **Real-Time Sugar Meter** | Circular progress tracks daily intake vs. WHO 50g/day — color shifts green → orange → red |
+| 📊 | **Real-Time Sugar Meter** | Circular progress tracks daily net sugar vs. WHO 50g/day — color shifts green → orange → red |
 | 📋 | **Smart Nutrition Form** | Pre-filled from AI prediction. Adapts fields for beverages (ml) vs. food (g). Auto-calculates total sugar |
-| 🚶 | **Sugar Burn Tracker** | Pedometer integration — sugar meter decreases live as you walk. 1g = 100 steps (1g = 4 kcal, 1 step = 0.04 kcal) |
-| 📅 | **Consumption History** | Per-entry cards: time, product, volume, sugar — persisted locally with smart midnight reset |
+| 🚶 | **Activity Offset (Hidden Credit)** | Steps accumulate a hidden sugar credit (1,000 steps = 1g, capped at 15g/day). Credit is automatically deducted from the next scan — the meter only rises by the net amount |
+| 📅 | **Consumption History** | Per-entry cards show raw label sugar (for packaging verification) + volume — persisted locally with smart midnight reset |
 | 🔍 | **Contextual Search** | One-tap Google search pre-filled with product + variant + volume |
 
 ---
@@ -150,10 +150,10 @@ Once the model identifies the product, the rest of the app takes over:
 │                          SugarEditController                       │
 │                           │            │                           │
 │                    SugarProvider   CloudinaryService               │
-│                    (local state)   (upload JSON pkg)               │
+│                    (net meter)    (upload JSON pkg)                │
 │                           │                                        │
 │                    ActivityController                              │
-│                    (pedometer + burn calc)                         │
+│                    (step credit system)                            │
 └──────────────────────────────────────────────────────────────────┘
           │                                    │
           ▼                                    ▼
@@ -175,13 +175,44 @@ Once the model identifies the product, the rest of the app takes over:
                                        auto-downloads
 ```
 
+### Activity Offset — Hidden Credit System
+
+Steps do not decrease the sugar meter in real-time. Instead they accumulate a hidden **sugar credit** that is applied at the moment of the next product scan:
+
+```
+User walks throughout the day
+        │
+        ▼
+ActivityController accumulates steps
+1,000 steps = 1g credit  (conservative ratio — prevents over-estimation)
+Max credit = 15g/day     (safety cap — prevents exercise compensation behaviour)
+        │
+        ▼
+User scans a product → 18g raw sugar on label
+        │
+        ▼
+SugarProvider.addEntry() calls processSugarIntake(18g)
+  availableCredit = 5g
+  appliedCredit   = 5g   → stored in SugarEntry.appliedCredit
+  netSugar        = 13g  → stored as SugarEntry.totalSugar (computed)
+        │
+        ├── Dashboard meter  += 13g  (net — what user is accountable for)
+        └── History card shows 18g  (raw — matches product label)
+```
+
+**Medical safety rationale:**
+- 1,000:1 ratio is intentionally conservative for low-intensity walking
+- 15g daily cap prevents the well-documented "exercise compensation" effect
+- Raw label sugar is always preserved in `rawSugarGrams` — no data is lost
+- A medical disclaimer is embedded in `ActivityController.medicalDisclaimer`
+
 ### Key Design Decisions
 
 **Cloudinary as dataset pipeline** — Each scan uploads one JSON package (images + metadata). No backend server. Python polls `is_processed: false`, processes, marks done. Serverless, zero cost during development.
 
 **Firebase only for model delivery** — OTA updates without a new app release. Bundled `.tflite` is the offline fallback.
 
-**Provider + ChangeNotifier** — Three reactive streams (sugar entries, step count, burn progress) that need to stay in sync. Right weight for this scope.
+**Provider + ChangeNotifier** — Three reactive streams (sugar entries, step credit, burn progress) that need to stay in sync. Provider is the right weight for this scope.
 
 ---
 
@@ -251,8 +282,9 @@ sugar-check-ai/
 
 - [x] Custom-trained on-device AI (MobileNetV2, 16 classes, ~93% val accuracy)
 - [x] Self-improving dataset loop (silent capture → Cloudinary → retrain → OTA)
-- [x] Real-time sugar meter with WHO daily limit
-- [x] Sugar burn tracker with live pedometer
+- [x] Real-time sugar meter with WHO daily limit (50g max, 25g ideal)
+- [x] Activity offset — hidden credit system (1,000 steps = 1g, 15g/day cap)
+- [x] Medical safety: raw label sugar preserved, net sugar shown on meter
 - [x] Consumption history with per-entry volume
 - [ ] **Variant Recognition** — *Indomie Goreng* vs *Indomie Kuah*, *Teh Botol Less Sugar* etc.
 - [ ] **Weekly PDF Report** — daily breakdown vs. WHO limits, exportable

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/activity_controller.dart';
 
-/// Always-visible step target widget.
-/// Dynamically updates as sugar intake increases.
+/// Displays the user's daily step progress and sugar credit status.
+///
+/// Credit is hidden from the user as a raw number — instead we show
+/// progress toward the daily cap and a motivational label.
 class StepTargetWidget extends StatelessWidget {
   const StepTargetWidget({super.key});
 
@@ -11,15 +13,14 @@ class StepTargetWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ActivityController>(
       builder: (context, activity, _) {
-        final int target = activity.targetSteps;
-        final int done = activity.sessionSteps;
-        final int remaining = activity.remainingSteps;
-        final double progress = activity.stepProgress;
-        final bool fullyBurned = activity.isFullyBurned;
+        final int steps        = activity.sessionSteps;
+        final double credit    = activity.availableCredit;
+        final double progress  = activity.creditProgress;
+        final bool capped      = activity.isCreditCapped;
 
-        final Color barColor = fullyBurned
+        final Color barColor = capped
             ? Colors.greenAccent
-            : progress > 0.7
+            : progress > 0.6
                 ? Colors.tealAccent
                 : Colors.tealAccent.withValues(alpha: 0.7);
 
@@ -42,7 +43,7 @@ class StepTargetWidget extends StatelessWidget {
                           color: Colors.tealAccent, size: 16),
                       const SizedBox(width: 6),
                       const Text(
-                        "Steps to Burn Sugar",
+                        "Activity Offset",
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.white70,
@@ -51,7 +52,7 @@ class StepTargetWidget extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (fullyBurned)
+                  if (capped)
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
@@ -60,7 +61,7 @@ class StepTargetWidget extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Text(
-                        "🎉 Done!",
+                        "🎉 Max reached!",
                         style: TextStyle(
                             fontSize: 11,
                             color: Colors.greenAccent,
@@ -71,7 +72,7 @@ class StepTargetWidget extends StatelessWidget {
               ),
               const SizedBox(height: 14),
 
-              // Progress bar
+              // Progress bar toward credit cap
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: LinearProgressIndicator(
@@ -88,39 +89,50 @@ class StepTargetWidget extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _StatChip(
-                    label: "Done",
-                    value: "$done steps",
+                    label: "Steps today",
+                    value: _formatSteps(steps),
                     color: Colors.tealAccent,
                   ),
                   _StatChip(
-                    label: "Remaining",
-                    value: target == 0 ? "—" : "$remaining steps",
-                    color: Colors.white54,
+                    label: "Credit available",
+                    value: credit > 0
+                        ? "${credit.toStringAsFixed(1)}g"
+                        : "0g",
+                    color: credit > 0 ? Colors.greenAccent : Colors.white38,
                   ),
                   _StatChip(
-                    label: "Target",
-                    value: target == 0 ? "Scan to set" : "$target steps",
+                    label: "To max offset",
+                    value: capped
+                        ? "Done"
+                        : "${activity.stepsToMaxCredit} steps",
                     color: Colors.white38,
                   ),
                 ],
               ),
 
-              // Hint when no sugar yet
-              if (target == 0) ...[
-                const SizedBox(height: 12),
-                Text(
-                  "Scan a product to see how many steps you need to burn its sugar.",
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.white.withValues(alpha: 0.3),
-                  ),
+              // Hint
+              const SizedBox(height: 12),
+              Text(
+                capped
+                    ? "Daily offset cap reached. Keep walking for your health! 💪"
+                    : "Steps you walk today will offset sugar from your next scan.",
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.3),
                 ),
-              ],
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  String _formatSteps(int steps) {
+    if (steps >= 1000) {
+      return "${(steps / 1000).toStringAsFixed(1)}k";
+    }
+    return "$steps";
   }
 }
 
