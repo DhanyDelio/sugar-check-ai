@@ -61,16 +61,21 @@ class ActivityController extends ChangeNotifier {
         "🎯 Sugar target updated: ${totalSugar}g → $targetSteps steps needed");
     notifyListeners();
 
-    if (!_isTracking) _startPedometer();
+    // Start pedometer only if not already streaming
+    if (!_isTracking || _stepSubscription == null) {
+      _requestPermission().then((_) {
+        if (_hasPermission) _startPedometer();
+      });
+    }
   }
 
   /// Start step tracking (called on app init).
   /// Also restores persisted state from previous session.
   Future<void> startPassiveTracking() async {
     await _restoreState();
-    if (_isTracking) return;
     await _requestPermission();
     if (!_hasPermission) return;
+    // Always start/restart pedometer stream on app init
     _startPedometer();
   }
 
@@ -137,8 +142,8 @@ class ActivityController extends ChangeNotifier {
 
   void _onStep(StepCount event) {
     if (_pedometerBaseline == 0) {
-      // Set baseline so new steps are counted relative to where we left off
       _pedometerBaseline = event.steps - _sessionSteps;
+      debugPrint("📍 Baseline set: $_pedometerBaseline");
     }
     final int steps = event.steps - _pedometerBaseline;
     if (steps <= _sessionSteps) return;

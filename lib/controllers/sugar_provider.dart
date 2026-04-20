@@ -18,10 +18,11 @@ class SugarProvider extends ChangeNotifier {
   /// Also immediately syncs the sugar target in case entries were already loaded.
   void setActivityController(ActivityController controller) {
     _activityController = controller;
-    // Sync target now that controller is available — covers the app-restart case
-    // where _loadFromStorage ran before this injection
+    // Sync target after current build frame completes — avoids setState during build
     if (todayTotal > 0) {
-      controller.updateSugarTarget(todayTotal);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.updateSugarTarget(todayTotal);
+      });
     }
   }
 
