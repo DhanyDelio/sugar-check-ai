@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/activity_controller.dart';
 import '../controllers/sugar_provider.dart';
+import '../services/battery_optimization_service.dart';
 import '../widgets/consumption_log_widget.dart';
 import '../widgets/daily_sugar_card.dart';
 import '../widgets/step_target_widget.dart';
@@ -21,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ActivityController>().startPassiveTracking();
+      BatteryOptimizationService.showIfNeeded(context);
     });
   }
 
