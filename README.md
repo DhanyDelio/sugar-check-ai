@@ -183,7 +183,14 @@ Steps do not decrease the sugar meter in real-time. Instead they accumulate a hi
 User walks throughout the day
         │
         ▼
-ActivityController accumulates steps
+ActivityController accumulates steps via two layers:
+  1. Foreground Service (flutter_foreground_task) — runs in a separate isolate,
+     keeps pedometer alive even when screen is off or app is backgrounded.
+     Writes steps to SharedPreferences every update.
+     Auto-restarts on device reboot.
+  2. Main isolate pedometer — updates UI when app is in foreground.
+     Sync timer (10s) reads steps written by foreground isolate.
+
 1,000 steps = 1g credit  (conservative ratio — prevents over-estimation)
 Max credit = 15g/day     (safety cap — prevents exercise compensation behaviour)
         │
@@ -272,8 +279,8 @@ sugar-check-ai/
 | Image Processing | `image` + `flutter_image_compress` | YUV→RGB + multi-level compression |
 | Dataset Storage | Cloudinary | Serverless pipeline, no backend needed |
 | State Management | Provider + ChangeNotifier | Lightweight, reactive, decoupled |
-| Pedometer | `pedometer` | Real-time step count for burn tracking |
-| Local Storage | `shared_preferences` | Daily entries with smart midnight reset |
+| Pedometer | `pedometer` + `flutter_foreground_task` | Background step counting with foreground service |
+| Local Storage | `shared_preferences` | Daily entries + step credit with smart midnight reset |
 | Environment | `flutter_dotenv` | Secrets out of source control |
 
 ---
