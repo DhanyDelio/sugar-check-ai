@@ -14,6 +14,81 @@ Produces a `.tflite` model deployed directly into the [Doctor Gula](https://gith
 
 ---
 
+## Data Engineering & Training Strategy
+
+Training a reliable product recognition model for Indonesian local goods is not a straightforward task. This section documents the key engineering decisions made during the data pipeline design — decisions driven by real constraints encountered during development.
+
+### The Problem: Data Scarcity & Overfitting
+
+The initial approach was to train at a granular level — classifying by **Brand + Variant** (e.g. *Indomie Goreng* vs *Indomie Kuah*). This failed immediately.
+
+Most variants had only 1–2 reference photos. Training on such a sparse set — even with aggressive class weighting and augmentation — produces a model that **memorizes specific images** rather than learning generalizable visual features. The result is near-perfect training accuracy and catastrophic validation failure. This is textbook overfitting, and no amount of regularization fixes a fundamentally insufficient dataset.
+
+**Decision:** Scope the model down to **Brand-level classification** only. Fewer classes, more samples per class, stable training.
+
+### Data Integrity Issues with Open Food Facts
+
+Open Food Facts is a valuable public dataset, but it has a critical limitation for local markets: **metadata accuracy is not guaranteed**. For Indonesian products specifically:
+
+- Sugar content values are often missing, incorrect, or entered in inconsistent units
+- Product names are frequently in English or mixed-language, not matching local packaging
+- Many entries have placeholder images or images of the wrong product variant
+
+Training on unverified data directly would produce a "Garbage In, Garbage Out" model — one that confidently predicts wrong answers. To prevent this, **every entry used for training was manually verified and annotated**. This is expensive in time but non-negotiable for a health-adjacent application.
+
+### The Solution: Hybrid Manual-AI Curation
+
+Rather than fully manual or fully automated labeling, a hybrid approach was used:
+
+```
+Raw images (OpenFoodFacts + web crawl)
+        │
+        ▼
+EfficientNetB0 feature extraction
+→ Agglomerative Clustering (distance_threshold=0.15)
+→ Cosine similarity filter (>0.92)
+        │
+        ▼  ← AI does the heavy lifting here
+Cluster folders (cluster_001/, cluster_002/, ...)
+        │
+        ▼  ← Human takes over here
+Manual review: verify each cluster visually
+→ Rename valid clusters to product class names
+→ Discard mixed or low-quality clusters
+        │
+        ▼
+"Gold Dataset" — clean, verified, ready for training
+```
+
+EfficientNetB0 handles the scale problem (sorting thousands of images by visual similarity). The human step ensures label correctness. Neither alone is sufficient — the combination produces a dataset that is both large enough to train on and accurate enough to trust.
+
+### Future-Proofing: User-Driven Incremental Retraining
+
+The current model is intentionally scoped to what the data can support today. The architecture is designed to get more granular over time through real-world usage:
+
+```
+Phase 1 (Now)
+  Model: Brand-level classifier (16 classes, ~93% val accuracy)
+  Data source: Curated Gold Dataset
+
+Phase 2 (In Progress)
+  Every confirmed user scan uploads:
+    - Primary photo + 9 silent background frames
+    - User-verified product name, variant, volume, sugar content
+  This real-world data is richer and more accurate than any public dataset
+  because it comes from actual product packaging in actual lighting conditions.
+
+Phase 3 (Future)
+  Retrain on accumulated user data
+  → Brand + Variant classification
+  → Volume-aware sugar calculation
+  → Continuous improvement loop
+```
+
+The key insight: **forcing a granular model with insufficient data produces a worse outcome than a simpler model trained on clean data**. The system is designed to be correct today and more capable tomorrow — not the other way around.
+
+---
+
 ## Pipeline Overview
 
 ```
