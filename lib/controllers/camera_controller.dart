@@ -49,13 +49,50 @@ class ScannerController with ChangeNotifier {
         return;
       }
 
+      _availableCameras = cameras;
+
       final backCam = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
 
+      _currentCamera = backCam;
+      await _initWithCamera(backCam);
+    } catch (e) {
+      debugPrint("❌ Initialization Error: $e");
+    }
+  }
+
+  List<CameraDescription> _availableCameras = [];
+  CameraDescription? _currentCamera;
+
+  bool get isBackCamera =>
+      _currentCamera?.lensDirection == CameraLensDirection.back;
+
+  /// Toggle between front and back camera.
+  Future<void> flipCamera() async {
+    if (_availableCameras.length < 2 || isAnalyzing) return;
+
+    final next = _availableCameras.firstWhere(
+      (c) => c.lensDirection !=
+          (_currentCamera?.lensDirection ?? CameraLensDirection.back),
+      orElse: () => _availableCameras.first,
+    );
+
+    _currentCamera = next;
+    await _initWithCamera(next);
+  }
+
+  Future<void> _initWithCamera(CameraDescription camera) async {
+    try {
+      if (controller != null) {
+        await controller!.dispose();
+        controller = null;
+        notifyListeners();
+      }
+
       controller = CameraController(
-        backCam,
+        camera,
         ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
@@ -63,10 +100,9 @@ class ScannerController with ChangeNotifier {
 
       await controller!.initialize();
       notifyListeners();
-
       await _startSilentCapture();
     } catch (e) {
-      debugPrint("❌ Initialization Error: $e");
+      debugPrint("❌ Camera init error: $e");
     }
   }
 
@@ -116,6 +152,22 @@ class ScannerController with ChangeNotifier {
     if (isAnalyzing || controller == null || !controller!.value.isInitialized) return;
 
     try {
+      // Wait for silent frames to finish collecting before proceeding.
+      // Show a fake loading state so user doesn't feel the app is frozen.
+      if (silentFrames.length < _silentFrameCount &&
+          controller!.value.isStreamingImages) {
+        _setLoading(true, "Preparing camera...");
+        debugPrint("⏳ Waiting for silent frames (${silentFrames.length}/$_silentFrameCount)...");
+
+        // Poll every 200ms until frames are ready or timeout after 5s
+        int waited = 0;
+        while (silentFrames.length < _silentFrameCount && waited < 5000) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          waited += 200;
+        }
+        debugPrint("✅ Silent frames ready: ${silentFrames.length}/$_silentFrameCount");
+      }
+
       _setLoading(true, _loadingMessages[0]);
 
       // Stop stream to avoid conflict with takePicture

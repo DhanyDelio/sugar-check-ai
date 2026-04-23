@@ -33,81 +33,125 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+    // Fixed height for the bottom control bar
+    const double controlBarHeight = 96.0;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: ListenableBuilder(
         listenable: _scannerLogic,
         builder: (context, _) {
-          return Stack(
-            alignment: Alignment.center,
+          return Column(
             children: [
-              // Camera preview
-              _isReady
-                  ? CameraPreviewWidget(controller: _scannerLogic.controller!)
-                  : const Center(
-                      child: CircularProgressIndicator(color: Colors.green),
+              // ── Camera area — takes all space above the control bar ──────
+              Expanded(
+                child: Stack(
+                  children: [
+                    // Camera preview fills the camera area
+                    Positioned.fill(
+                      child: _isReady
+                          ? CameraPreviewWidget(
+                              controller: _scannerLogic.controller!)
+                          : const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.green),
+                            ),
                     ),
 
-              // Framing overlay
-              const ScannerOverlayWidget(),
+                    // Bracket overlay — centered inside camera area
+                    const ScannerOverlayWidget(),
 
-              // Capture button
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 40),
-                  child: CaptureButtonWidget(
-                    onTap: _scannerLogic.isAnalyzing
-                        ? () {}
-                        : () => _scannerLogic.onCapturePressed("test@gmail.com"),
-                  ),
+                    // Back button
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 8,
+                      left: 8,
+                      child: IconButton(
+                        onPressed: () => MainScreen.switchToHome(),
+                        icon: const Icon(Icons.arrow_back,
+                            color: Colors.white, size: 30),
+                      ),
+                    ),
+
+                    // Loading overlay
+                    if (_scannerLogic.isAnalyzing)
+                      LoadingOverlay(
+                        message: _scannerLogic.loadingMessage,
+                        subMessage: "Point the camera at the nutrition label",
+                      ),
+                  ],
                 ),
               ),
 
-              // Back button
-              Positioned(
-                top: 40,
-                left: 20,
-                child: IconButton(
-                  onPressed: () => MainScreen.switchToHome(),
-                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
+              // ── Control bar — always below camera, never overlaps ────────
+              Container(
+                width: double.infinity,
+                height: controlBarHeight + bottomPadding,
+                color: Colors.black,
+                padding: EdgeInsets.only(
+                  top: 12,
+                  bottom: bottomPadding + 12,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Flip camera
+                    _ControlButton(
+                      icon: Icons.flip_camera_ios_outlined,
+                      onTap: _scannerLogic.isAnalyzing
+                          ? null
+                          : () async {
+                              await _scannerLogic.flipCamera();
+                              if (mounted) setState(() {});
+                            },
+                    ),
+
+                    // Capture
+                    CaptureButtonWidget(
+                      onTap: _scannerLogic.isAnalyzing
+                          ? () {}
+                          : () => _scannerLogic
+                              .onCapturePressed("test@gmail.com"),
+                    ),
+
+                    // Gallery
+                    _ControlButton(
+                      icon: Icons.photo_library_outlined,
+                      onTap: _scannerLogic.isAnalyzing
+                          ? null
+                          : () => _scannerLogic
+                              .onGalleryPressed("test@gmail.com"),
+                    ),
+                  ],
                 ),
               ),
-
-              // Gallery picker button
-              Positioned(
-                bottom: 52,
-                right: 40,
-                child: GestureDetector(
-                  onTap: _scannerLogic.isAnalyzing
-                      ? null
-                      : () => _scannerLogic.onGalleryPressed("test@gmail.com"),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white38, width: 1.5),
-                    ),
-                    child: const Icon(
-                      Icons.photo_library_outlined,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ),
-              ),
-
-              // Loading overlay during AI processing
-              if (_scannerLogic.isAnalyzing)
-                LoadingOverlay(
-                  message: _scannerLogic.loadingMessage,
-                  subMessage: "Point the camera at the nutrition label",
-                ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _ControlButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _ControlButton({required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white38, width: 1.5),
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
       ),
     );
   }

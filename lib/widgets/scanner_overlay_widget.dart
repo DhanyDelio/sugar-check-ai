@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
-/// Overlay visual di atas camera preview — menampilkan bracket sudut
-/// sebagai panduan framing kemasan produk.
+/// Bracket overlay centered inside the camera preview area.
+/// Since the camera area is now a separate Expanded widget (not full screen),
+/// this widget simply centers itself — no manual offset calculation needed.
 class ScannerOverlayWidget extends StatelessWidget {
   const ScannerOverlayWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // 72% of screen width, but never taller than 60% of available height
+    final double size = MediaQuery.of(context).size.width * 0.72;
+
     return Center(
       child: SizedBox(
-        width: 260,
-        height: 260,
+        width: size,
+        height: size,
         child: CustomPaint(
           painter: _BracketPainter(),
         ),
@@ -28,7 +32,7 @@ class _BracketPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    const double bracketLength = 28.0;
+    const double bracketLength = 32.0;
     final double w = size.width;
     final double h = size.height;
 
