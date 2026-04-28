@@ -42,7 +42,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SugarProvider()),
         ChangeNotifierProvider(create: (_) => ActivityController()),
         ChangeNotifierProxyProvider<ActivityController, SugarProvider>(
           create: (_) => SugarProvider(),

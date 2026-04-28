@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:amplify_flutter/amplify_flutter.dart';
-import 'package:amplify_storage_s3/amplify_storage_s3.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
@@ -42,28 +41,26 @@ class AwsStorageService {
   // ── Compression ───────────────────────────────────────────────────────────
 
   Future<Uint8List> _compressPrimary(Uint8List bytes) async {
-    final result = await FlutterImageCompress.compressWithList(
+    final Uint8List compressed = await FlutterImageCompress.compressWithList(
       bytes,
       minWidth: 800,
       minHeight: 800,
       quality: 45,
       format: CompressFormat.jpeg,
     );
-    final compressed = result ?? bytes;
-    debugPrint("  🗜 [primary] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
+    debugPrint("  🗄 [primary] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
     return compressed;
   }
 
   Future<Uint8List> _compressSilentFrame(Uint8List bytes, int index) async {
-    final result = await FlutterImageCompress.compressWithList(
+    final Uint8List compressed = await FlutterImageCompress.compressWithList(
       bytes,
       minWidth: 400,
       minHeight: 400,
       quality: 30,
       format: CompressFormat.jpeg,
     );
-    final compressed = result ?? bytes;
-    debugPrint("  🗜 [frame_$index] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
+    debugPrint("  🗄 [frame_$index] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
     return compressed;
   }
 

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../controllers/camera_controller.dart';
-import '../core/app_colors.dart';
 import '../screens/main_screen.dart';
 import '../services/user_id_service.dart';
 import '../widgets/camera_preview_widget.dart';
@@ -49,6 +48,21 @@ class _ScanScreenState extends State<ScanScreen> {
       body: ListenableBuilder(
         listenable: _scannerLogic,
         builder: (context, _) {
+          // Show error as a SnackBar, then clear so it doesn't repeat on rebuild
+          if (_scannerLogic.errorMessage != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(_scannerLogic.errorMessage!),
+                  backgroundColor: Colors.redAccent.withValues(alpha: 0.9),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+              _scannerLogic.errorMessage = null;
+            });
+          }
           return Column(
             children: [
               // ── Camera area ──────────────────────────────────────────────
@@ -56,7 +70,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: _isReady
+                      child: (_isReady && _scannerLogic.controller != null && _scannerLogic.controller!.value.isInitialized)
                           ? CameraPreviewWidget(
                               controller: _scannerLogic.controller!)
                           : const Center(
@@ -74,10 +88,23 @@ class _ScanScreenState extends State<ScanScreen> {
                             color: Colors.white, size: 30),
                       ),
                     ),
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 8,
+                      right: 8,
+                      child: IconButton(
+                        onPressed: _scannerLogic.isAnalyzing
+                            ? null
+                            : () => _scannerLogic.toggleFlash(!_scannerLogic.isFlashOn),
+                        icon: Icon(
+                          _scannerLogic.isFlashOn ? Icons.flash_on : Icons.flash_off,
+                          color: _scannerLogic.isAnalyzing ? Colors.white38 : Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                    ),
                     if (_scannerLogic.isAnalyzing)
                       LoadingOverlay(
                         message: _scannerLogic.loadingMessage,
-                        subMessage: "Point the camera at the nutrition label",
                       ),
                   ],
                 ),

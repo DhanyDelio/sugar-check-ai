@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
@@ -15,7 +16,16 @@ class ScannerController with ChangeNotifier {
 
   bool isAnalyzing = false;
   String loadingMessage = "";
+  String? errorMessage;
   List<Uint8List> silentFrames = [];
+
+  // True if the camera image stream terminated with an error.
+  // Checked in onCapturePressed before proceeding — prevents silent failure.
+  bool _silentCaptureError = false;
+  Completer<void>? _silentCaptureCompleter;
+
+  bool isFlashOn = false;
+  bool _hasCheckedBrightness = false;
 
   static const int _silentFrameCount      = 9;
   static const int _silentFrameIntervalMs = 500;
@@ -39,12 +49,7 @@ class ScannerController with ChangeNotifier {
 
   Future<void> initCamera() async {
     try {
-      await _stopStreamSafely();
-      if (controller != null) {
-        await controller!.dispose();
-        controller = null;
-      }
-      notifyListeners();
+      await releaseCamera();
 
       await _tfliteService.initializeModel();
       final cameras = await availableCameras();
@@ -78,12 +83,8 @@ class ScannerController with ChangeNotifier {
 
   Future<void> _initWithCamera(CameraDescription camera) async {
     try {
-      await _stopStreamSafely();
-      if (controller != null) {
-        await controller!.dispose();
-        controller = null;
-        notifyListeners();
-      }
+      await releaseCamera();
+
       controller = CameraController(
         camera,
         ResolutionPreset.medium,
@@ -100,13 +101,18 @@ class ScannerController with ChangeNotifier {
 
   Future<void> restartSilentCapture() async {
     if (controller == null || !controller!.value.isInitialized) return;
-    await _stopStreamSafely();
+    if (controller!.value.isStreamingImages) {
+      await controller!.stopImageStream();
+    }
     await _startSilentCapture();
   }
 
   // ── Silent capture ────────────────────────────────────────────────────────
 
   Future<void> _startSilentCapture() async {
+    _silentCaptureError = false;
+    _hasCheckedBrightness = false;
+    _silentCaptureCompleter = Completer<void>();
     try {
       int frameCount = 0;
       DateTime lastFrameTime = DateTime.now();
@@ -114,6 +120,29 @@ class ScannerController with ChangeNotifier {
 
       await controller!.startImageStream((CameraImage image) {
         final now = DateTime.now();
+
+        // Light meter: auto-enable flash if too dark
+        if (!_hasCheckedBrightness) {
+          _hasCheckedBrightness = true;
+          try {
+            int total = 0;
+            final bytes = image.planes[0].bytes;
+            final step = bytes.length ~/ 100;
+            if (step > 0) {
+              for (int i = 0; i < bytes.length; i += step) {
+                total += bytes[i];
+              }
+              final avg = total / 100;
+              if (avg < 40 && !isFlashOn) {
+                debugPrint("💡 Light meter: Low light detected ($avg). User can manually enable flash if needed.");
+                // auto-enable flash is removed per user request: default false.
+              }
+            }
+          } catch (e) {
+            debugPrint("⚠️ Light meter error: $e");
+          }
+        }
+
         if (frameCount < _silentFrameCount &&
             now.difference(lastFrameTime).inMilliseconds > _silentFrameIntervalMs) {
           final img.Image converted = ImageUtils.convertYUV420ToImage(image);
@@ -128,11 +157,18 @@ class ScannerController with ChangeNotifier {
           if (controller!.value.isStreamingImages) {
             controller!.stopImageStream();
             debugPrint("✅ Silent capture done ($_silentFrameCount frames).");
+            if (_silentCaptureCompleter != null && !_silentCaptureCompleter!.isCompleted) {
+              _silentCaptureCompleter!.complete();
+            }
           }
         }
       });
     } catch (e) {
       debugPrint("❌ Silent capture error: $e");
+      _silentCaptureError = true;
+      if (_silentCaptureCompleter != null && !_silentCaptureCompleter!.isCompleted) {
+        _silentCaptureCompleter!.complete();
+      }
     }
   }
 
@@ -180,7 +216,11 @@ class ScannerController with ChangeNotifier {
     }
 
     _setLoading(false, "");
-    NavigationService.navigateTo(
+
+    // Fully release camera hardware before navigating away so OS flash works on Edit Screen
+    await releaseCamera();
+
+    await NavigationService.navigateTo(
       SugarEditScreen(
         ocrImage: capturedFrame,
         silentImages: capturedSilentFrames,
@@ -191,29 +231,62 @@ class ScannerController with ChangeNotifier {
         confidence: result.confidence,
       ),
     );
+
+    // Re-initialize camera when returning to this screen
+    await initCamera();
   }
 
   // ── Public actions ────────────────────────────────────────────────────────
 
+  Future<void> toggleFlash(bool isOn) async {
+    if (controller == null || !controller!.value.isInitialized) return;
+    if (controller!.value.isTakingPicture) return;
+
+    try {
+      await controller!.setFlashMode(isOn ? FlashMode.torch : FlashMode.off);
+      isFlashOn = isOn;
+      notifyListeners();
+    } catch (e) {
+      debugPrint("❌ Flash toggle error: $e");
+    }
+  }
+
   Future<void> onCapturePressed(String userEmail) async {
     if (isAnalyzing || controller == null || !controller!.value.isInitialized) return;
+
+    // Clear any previous error so UI resets on retry
+    errorMessage = null;
+    notifyListeners();
 
     try {
       // Wait for silent frames if still collecting
       if (silentFrames.length < _silentFrameCount &&
-          controller!.value.isStreamingImages) {
+          controller!.value.isStreamingImages &&
+          !_silentCaptureError) {
         _setLoading(true, "Preparing camera...");
         debugPrint("⏳ Waiting for silent frames (${silentFrames.length}/$_silentFrameCount)...");
-        int waited = 0;
-        while (silentFrames.length < _silentFrameCount && waited < 5000) {
-          await Future.delayed(const Duration(milliseconds: 200));
-          waited += 200;
+        
+        try {
+          if (_silentCaptureCompleter != null) {
+            await _silentCaptureCompleter!.future.timeout(const Duration(seconds: 5));
+          }
+        } catch (e) {
+          debugPrint("⚠️ Wait for silent frames timed out or errored: $e");
         }
+        
         debugPrint("✅ Silent frames ready: ${silentFrames.length}/$_silentFrameCount");
       }
 
+      // Abort if the camera stream failed — don't silently proceed with 0 frames
+      if (_silentCaptureError && silentFrames.isEmpty) {
+        _setError("Camera error — please tap capture again");
+        return;
+      }
+
       _setLoading(true, _loadingMessages[0]);
-      await _stopStreamSafely();
+      if (controller!.value.isStreamingImages) {
+        await controller!.stopImageStream();
+      }
 
       final XFile photo = await controller!.takePicture();
       final Uint8List originalBytes = await photo.readAsBytes();
@@ -265,24 +338,48 @@ class ScannerController with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Safely stop image stream — no-op if not streaming.
-  Future<void> _stopStreamSafely() async {
-    try {
-      if (controller != null &&
-          controller!.value.isInitialized &&
-          controller!.value.isStreamingImages) {
-        await controller!.stopImageStream();
-        debugPrint("⏸ Stream stopped");
-      }
-    } catch (_) {}
+  /// Surface a recoverable error to the UI. Clears the loading state.
+  void _setError(String message) {
+    isAnalyzing = false;
+    loadingMessage = '';
+    errorMessage = message;
+    notifyListeners();
   }
 
-  // ── Dispose ───────────────────────────────────────────────────────────────
+  // ── Dispose & Release ─────────────────────────────────────────────────────
+
+  /// Completely stops the stream, turns off the flash, and releases the hardware.
+  Future<void> releaseCamera() async {
+    final CameraController? temp = controller;
+    if (temp == null) return;
+    
+    // Set to null immediately so UI shows loading instead of frozen preview
+    controller = null;
+    notifyListeners();
+
+    try {
+      // 1. Stop stream if active
+      if (temp.value.isInitialized && temp.value.isStreamingImages) {
+        await temp.stopImageStream();
+        debugPrint("⏸ Stream stopped before release");
+      }
+      // 2. Turn off flash if active
+      if (isFlashOn && temp.value.isInitialized) {
+        await temp.setFlashMode(FlashMode.off);
+        isFlashOn = false;
+        debugPrint("🔦 Flash turned off before release");
+      }
+      // 3. Dispose hardware
+      await temp.dispose();
+      debugPrint("✅ Camera hardware fully released.");
+    } catch (e) {
+      debugPrint("❌ Error releasing camera: $e");
+    }
+  }
 
   @override
   void dispose() {
-    // Stop stream before disposing to prevent memory leaks
-    _stopStreamSafely().then((_) => controller?.dispose());
+    releaseCamera();
     super.dispose();
   }
 }

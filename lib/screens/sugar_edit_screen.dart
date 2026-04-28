@@ -205,9 +205,9 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                               ),
                               elevation: canSubmit ? 4 : 0,
                             ),
-                            icon: const Icon(Icons.cloud_upload_outlined),
+                            icon: const Icon(Icons.check_rounded),
                             label: const Text(
-                              "Confirm & Upload",
+                              "Submit",
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
@@ -217,6 +217,7 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                                 ? () async {
                                     final provider =
                                         context.read<SugarProvider>();
+                                    final navigator = Navigator.of(context);
                                     final bool success =
                                         await _controller.uploadData(
                                       widget.userEmail,
@@ -245,8 +246,7 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                                       },
                                     );
                                     if (success && mounted) {
-                                      Navigator.of(context)
-                                          .popUntil((r) => r.isFirst);
+                                      navigator.popUntil((r) => r.isFirst);
                                       MainScreen.switchToHome();
                                     }
                                   }

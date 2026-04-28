@@ -44,6 +44,7 @@ class BatteryOptimizationService {
     if (!await shouldShowDialog()) return;
     if (!context.mounted) return;
     await markShown();
+    if (!context.mounted) return;
     await showDialog(
       context: context,
       barrierDismissible: false,
