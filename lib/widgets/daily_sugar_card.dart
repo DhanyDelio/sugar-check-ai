@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/app_colors.dart';
 
 /// Animated circular sugar intake card
 class DailySugarCard extends StatefulWidget {
@@ -81,7 +82,7 @@ class _DailySugarCardState extends State<DailySugarCard>
           width: double.infinity,
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E2E),
+            color: AppColors.card,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(

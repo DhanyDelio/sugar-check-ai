@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/app_colors.dart';
 import 'home_screen.dart';
 import 'scan_screen.dart';
 
@@ -26,20 +27,20 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF12121A),
+      backgroundColor: AppColors.background,
       body: _currentIndex == 0 ? const HomeScreen() : const ScanScreen(),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
+          color: AppColors.navBar,
           border: Border(
-            top: BorderSide(color: Colors.white.withOpacity(0.06)),
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
           ),
         ),
         child: NavigationBar(
           selectedIndex: _currentIndex,
           onDestinationSelected: _switchTab,
           backgroundColor: Colors.transparent,
-          indicatorColor: Colors.tealAccent.withOpacity(0.15),
+          indicatorColor: Colors.tealAccent.withValues(alpha: 0.15),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: const [
             NavigationDestination(

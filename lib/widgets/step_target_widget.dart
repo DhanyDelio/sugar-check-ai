@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/activity_controller.dart';
+import '../core/app_colors.dart';
 
 /// Displays the user's daily step progress and sugar credit status.
 ///
@@ -27,7 +28,7 @@ class StepTargetWidget extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E2E),
+            color: AppColors.card,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Column(

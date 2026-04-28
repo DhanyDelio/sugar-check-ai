@@ -1,12 +1,12 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import '../services/cloudinary_service.dart';
+import '../services/aws_storage_service.dart';
 
 /// Product category — determines which form fields are shown
 enum ProductCategory { minuman, makanan }
 
 class SugarEditController extends ChangeNotifier {
-  final CloudinaryService _cloudinaryService = CloudinaryService();
+  final AwsStorageService _storageService = AwsStorageService();
 
   late TextEditingController productController;
   late TextEditingController varianController;
@@ -132,7 +132,7 @@ class SugarEditController extends ChangeNotifier {
     final double volume = double.tryParse(totalController.text) ?? 0;
 
     try {
-      final String imageUrl = await _cloudinaryService.uploadTrainingData(
+      final String imageUrl = await _storageService.uploadTrainingData(
         primaryImage: originalOcr,
         silentFramesList: _silentFrames,
         sugarValue: calculatedTotalSugar,

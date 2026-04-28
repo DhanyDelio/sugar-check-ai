@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../controllers/camera_controller.dart';
+import '../core/app_colors.dart';
 import '../screens/main_screen.dart';
+import '../services/user_id_service.dart';
 import '../widgets/camera_preview_widget.dart';
 import '../widgets/capture_button_widget.dart';
 import '../widgets/scanner_overlay_widget.dart';
@@ -16,13 +18,20 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> {
   final ScannerController _scannerLogic = ScannerController();
   bool _isReady = false;
+  String _userId = '';
+
+  static const double _controlBarHeight = 96.0;
 
   @override
   void initState() {
     super.initState();
-    _scannerLogic.initCamera().then((_) {
-      if (mounted) setState(() => _isReady = true);
-    });
+    _init();
+  }
+
+  Future<void> _init() async {
+    _userId = await UserIdService.getUserId();
+    await _scannerLogic.initCamera();
+    if (mounted) setState(() => _isReady = true);
   }
 
   @override
@@ -34,8 +43,6 @@ class _ScanScreenState extends State<ScanScreen> {
   @override
   Widget build(BuildContext context) {
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
-    // Fixed height for the bottom control bar
-    const double controlBarHeight = 96.0;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -44,11 +51,10 @@ class _ScanScreenState extends State<ScanScreen> {
         builder: (context, _) {
           return Column(
             children: [
-              // ── Camera area — takes all space above the control bar ──────
+              // ── Camera area ──────────────────────────────────────────────
               Expanded(
                 child: Stack(
                   children: [
-                    // Camera preview fills the camera area
                     Positioned.fill(
                       child: _isReady
                           ? CameraPreviewWidget(
@@ -58,11 +64,7 @@ class _ScanScreenState extends State<ScanScreen> {
                                   color: Colors.green),
                             ),
                     ),
-
-                    // Bracket overlay — centered inside camera area
                     const ScannerOverlayWidget(),
-
-                    // Back button
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 8,
                       left: 8,
@@ -72,8 +74,6 @@ class _ScanScreenState extends State<ScanScreen> {
                             color: Colors.white, size: 30),
                       ),
                     ),
-
-                    // Loading overlay
                     if (_scannerLogic.isAnalyzing)
                       LoadingOverlay(
                         message: _scannerLogic.loadingMessage,
@@ -83,10 +83,10 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ),
 
-              // ── Control bar — always below camera, never overlaps ────────
+              // ── Control bar ──────────────────────────────────────────────
               Container(
                 width: double.infinity,
-                height: controlBarHeight + bottomPadding,
+                height: _controlBarHeight + bottomPadding,
                 color: Colors.black,
                 padding: EdgeInsets.only(
                   top: 12,
@@ -95,7 +95,6 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // Flip camera
                     _ControlButton(
                       icon: Icons.flip_camera_ios_outlined,
                       onTap: _scannerLogic.isAnalyzing
@@ -105,22 +104,16 @@ class _ScanScreenState extends State<ScanScreen> {
                               if (mounted) setState(() {});
                             },
                     ),
-
-                    // Capture
                     CaptureButtonWidget(
                       onTap: _scannerLogic.isAnalyzing
                           ? () {}
-                          : () => _scannerLogic
-                              .onCapturePressed("test@gmail.com"),
+                          : () => _scannerLogic.onCapturePressed(_userId),
                     ),
-
-                    // Gallery
                     _ControlButton(
                       icon: Icons.photo_library_outlined,
                       onTap: _scannerLogic.isAnalyzing
                           ? null
-                          : () => _scannerLogic
-                              .onGalleryPressed("test@gmail.com"),
+                          : () => _scannerLogic.onGalleryPressed(_userId),
                     ),
                   ],
                 ),

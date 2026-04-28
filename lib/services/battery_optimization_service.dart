@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/app_colors.dart';
 
 /// Handles battery optimization whitelist guidance.
 /// Shows a one-time dialog that walks the user through disabling
@@ -57,7 +58,7 @@ class _BatteryOptDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E2E),
+      backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: const Row(
         children: [
@@ -124,7 +125,7 @@ class _BatteryOptDialog extends StatelessWidget {
         ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.tealAccent,
-            foregroundColor: const Color(0xFF12121A),
+            foregroundColor: AppColors.background,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

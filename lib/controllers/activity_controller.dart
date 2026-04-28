@@ -51,20 +51,40 @@ void startCallback() {
 class _StepTaskHandler extends TaskHandler {
   StreamSubscription<StepCount>? _sub;
   int _baseline = 0;
+  int _savedSteps = 0;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getInt(_keySessionSteps) ?? 0;
+
+    // Check midnight reset before reading saved steps
+    final String today =
+        '${DateTime.now().year}-'
+        '${DateTime.now().month.toString().padLeft(2, '0')}-'
+        '${DateTime.now().day.toString().padLeft(2, '0')}';
+    final String? savedDate = prefs.getString(_keySavedDate);
+    if (savedDate != today) {
+      // New day — reset in foreground isolate too
+      await prefs.remove(_keySessionSteps);
+      await prefs.setString(_keySavedDate, today);
+      _savedSteps = 0;
+    } else {
+      _savedSteps = prefs.getInt(_keySessionSteps) ?? 0;
+    }
 
     _sub = Pedometer.stepCountStream.listen(
       (event) async {
         if (_baseline == 0) {
-          _baseline = event.steps - saved;
+          // Baseline anchors pedometer's absolute counter to our session steps
+          _baseline = event.steps - _savedSteps;
         }
-        final steps = event.steps - _baseline;
-        final current = prefs.getInt(_keySessionSteps) ?? 0;
+        final int steps = event.steps - _baseline;
+
+        // SAFETY: never write a value lower than what's already saved
+        // This prevents race condition with main isolate overwriting higher values
+        final int current = prefs.getInt(_keySessionSteps) ?? 0;
         if (steps > current) {
+          _savedSteps = steps;
           await prefs.setInt(_keySessionSteps, steps);
           FlutterForegroundTask.updateService(
             notificationText: 'Steps today: $steps',
@@ -78,7 +98,15 @@ class _StepTaskHandler extends TaskHandler {
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
-    // Keep-alive ping
+    // Re-read saved steps periodically to stay in sync with main isolate
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt(_keySessionSteps) ?? 0;
+    if (current > _savedSteps) {
+      _savedSteps = current;
+      // Recalibrate baseline to avoid double-counting
+      // Next _onStep event will recalculate correctly
+      _baseline = 0;
+    }
   }
 
   @override
@@ -199,6 +227,7 @@ class ActivityController extends ChangeNotifier {
     _syncTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getInt(_keySessionSteps) ?? 0;
+      // Only update if foreground isolate has a higher value — never go backwards
       if (saved > _sessionSteps) {
         _sessionSteps = saved;
         notifyListeners();

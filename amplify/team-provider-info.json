@@ -1,0 +1,23 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-sugarcheck-dev-ed564-authRole",
+      "UnauthRoleArn": "arn:aws:iam::942195278715:role/amplify-sugarcheck-dev-ed564-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::942195278715:role/amplify-sugarcheck-dev-ed564-authRole",
+      "Region": "ap-southeast-1",
+      "DeploymentBucketName": "amplify-sugarcheck-dev-ed564-deployment",
+      "UnauthRoleName": "amplify-sugarcheck-dev-ed564-unauthRole",
+      "StackName": "amplify-sugarcheck-dev-ed564",
+      "StackId": "arn:aws:cloudformation:ap-southeast-1:942195278715:stack/amplify-sugarcheck-dev-ed564/f3eb2ab0-42e7-11f1-ad5e-0a5f26d3da89",
+      "AmplifyAppId": "d1hllg0s4zgqob"
+    },
+    "categories": {
+      "auth": {
+        "sugarcheckc16085d4": {}
+      },
+      "storage": {
+        "s3c6b5505b": {}
+      }
+    }
+  }
+}

@@ -17,14 +17,10 @@ class ScannerController with ChangeNotifier {
   String loadingMessage = "";
   List<Uint8List> silentFrames = [];
 
-  // Number of silent frames collected per scan session for dataset diversity
-  static const int _silentFrameCount = 9;
-  // Interval between frames to capture varied angles
+  static const int _silentFrameCount      = 9;
   static const int _silentFrameIntervalMs = 500;
-  // Pre-resize width before center-crop to 224x224 for AI inference
-  static const int _aiPreResizeWidth = 800;
-  // Display image width for UI rendering
-  static const int _displayImageWidth = 400;
+  static const int _aiPreResizeWidth      = 800;
+  static const int _displayImageWidth     = 400;
 
   static const List<String> _loadingMessages = [
     "Analyzing packaging...",
@@ -33,13 +29,21 @@ class ScannerController with ChangeNotifier {
     "Processing results...",
   ];
 
+  // ── Camera init ───────────────────────────────────────────────────────────
+
+  List<CameraDescription> _availableCameras = [];
+  CameraDescription? _currentCamera;
+
+  bool get isBackCamera =>
+      _currentCamera?.lensDirection == CameraLensDirection.back;
+
   Future<void> initCamera() async {
     try {
+      await _stopStreamSafely();
       if (controller != null) {
         await controller!.dispose();
         controller = null;
       }
-
       notifyListeners();
 
       await _tfliteService.initializeModel();
@@ -50,12 +54,10 @@ class ScannerController with ChangeNotifier {
       }
 
       _availableCameras = cameras;
-
       final backCam = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
-
       _currentCamera = backCam;
       await _initWithCamera(backCam);
     } catch (e) {
@@ -63,41 +65,31 @@ class ScannerController with ChangeNotifier {
     }
   }
 
-  List<CameraDescription> _availableCameras = [];
-  CameraDescription? _currentCamera;
-
-  bool get isBackCamera =>
-      _currentCamera?.lensDirection == CameraLensDirection.back;
-
-  /// Toggle between front and back camera.
   Future<void> flipCamera() async {
     if (_availableCameras.length < 2 || isAnalyzing) return;
-
     final next = _availableCameras.firstWhere(
       (c) => c.lensDirection !=
           (_currentCamera?.lensDirection ?? CameraLensDirection.back),
       orElse: () => _availableCameras.first,
     );
-
     _currentCamera = next;
     await _initWithCamera(next);
   }
 
   Future<void> _initWithCamera(CameraDescription camera) async {
     try {
+      await _stopStreamSafely();
       if (controller != null) {
         await controller!.dispose();
         controller = null;
         notifyListeners();
       }
-
       controller = CameraController(
         camera,
         ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
-
       await controller!.initialize();
       notifyListeners();
       await _startSilentCapture();
@@ -106,17 +98,13 @@ class ScannerController with ChangeNotifier {
     }
   }
 
-  /// Restart silent capture — called every time user enters the scan screen.
   Future<void> restartSilentCapture() async {
     if (controller == null || !controller!.value.isInitialized) return;
-
-    // Stop existing stream if still running
-    if (controller!.value.isStreamingImages) {
-      await controller!.stopImageStream();
-    }
-
+    await _stopStreamSafely();
     await _startSilentCapture();
   }
+
+  // ── Silent capture ────────────────────────────────────────────────────────
 
   Future<void> _startSilentCapture() async {
     try {
@@ -148,18 +136,74 @@ class ScannerController with ChangeNotifier {
     }
   }
 
+  // ── Core image processing — shared by capture and gallery ─────────────────
+
+  /// Decode, resize for display + AI, run inference, navigate to edit screen.
+  /// [capturedSilentFrames] is empty for gallery images.
+  Future<void> _processImage({
+    required Uint8List originalBytes,
+    required String userEmail,
+    required List<Uint8List> capturedSilentFrames,
+  }) async {
+    final img.Image? decodedImg = img.decodeImage(originalBytes);
+    if (decodedImg == null) {
+      debugPrint("❌ decodeImage failed");
+      _setLoading(false, "");
+      return;
+    }
+    debugPrint("🖼 Decoded: ${decodedImg.width}x${decodedImg.height}");
+
+    // Resize for UI display
+    _setLoading(true, _loadingMessages[1]);
+    final img.Image displayImg =
+        img.copyResize(decodedImg, width: _displayImageWidth);
+    final Uint8List capturedFrame = Uint8List.fromList(
+      img.encodeJpg(displayImg, quality: 60),
+    );
+
+    // AI inference
+    _setLoading(true, _loadingMessages[2]);
+    final img.Image aiImg =
+        img.copyResize(decodedImg, width: _aiPreResizeWidth);
+    final ScanResult result = await _tfliteService.runInference(aiImg);
+
+    _setLoading(true, _loadingMessages[3]);
+
+    final String productName = result.isConfident
+        ? formatLabel(result.product)
+        : "";
+
+    if (result.isConfident) {
+      debugPrint("✅ Auto-fill: $productName (${result.confidence.toStringAsFixed(1)}%)");
+    } else {
+      debugPrint("⚠️ Low confidence (${result.confidence.toStringAsFixed(1)}%) — field left empty");
+    }
+
+    _setLoading(false, "");
+    NavigationService.navigateTo(
+      SugarEditScreen(
+        ocrImage: capturedFrame,
+        silentImages: capturedSilentFrames,
+        initialSugar: 0,
+        initialProductName: productName,
+        userEmail: userEmail,
+        suggestionName: result.isConfident ? null : formatLabel(result.product),
+        confidence: result.confidence,
+      ),
+    );
+  }
+
+  // ── Public actions ────────────────────────────────────────────────────────
+
   Future<void> onCapturePressed(String userEmail) async {
     if (isAnalyzing || controller == null || !controller!.value.isInitialized) return;
 
     try {
-      // Wait for silent frames to finish collecting before proceeding.
-      // Show a fake loading state so user doesn't feel the app is frozen.
+      // Wait for silent frames if still collecting
       if (silentFrames.length < _silentFrameCount &&
           controller!.value.isStreamingImages) {
         _setLoading(true, "Preparing camera...");
         debugPrint("⏳ Waiting for silent frames (${silentFrames.length}/$_silentFrameCount)...");
-
-        // Poll every 200ms until frames are ready or timeout after 5s
         int waited = 0;
         while (silentFrames.length < _silentFrameCount && waited < 5000) {
           await Future.delayed(const Duration(milliseconds: 200));
@@ -169,75 +213,26 @@ class ScannerController with ChangeNotifier {
       }
 
       _setLoading(true, _loadingMessages[0]);
+      await _stopStreamSafely();
 
-      // Stop stream to avoid conflict with takePicture
-      if (controller!.value.isStreamingImages) {
-        await controller!.stopImageStream();
-        debugPrint("⏸ Stream stopped for takePicture");
-      }
-
-      // 1. Capture photo
       final XFile photo = await controller!.takePicture();
       final Uint8List originalBytes = await photo.readAsBytes();
       debugPrint("📷 takePicture: ${originalBytes.length} bytes");
 
-      final img.Image? decodedImg = img.decodeImage(originalBytes);
-      if (decodedImg == null) {
-        debugPrint("❌ decodeImage failed");
-        return;
-      }
-      debugPrint("🖼 Decoded: ${decodedImg.width}x${decodedImg.height}");
-
-      // 2. Resize for UI display
-      _setLoading(true, _loadingMessages[1]);
-      final img.Image displayImg = img.copyResize(decodedImg, width: _displayImageWidth);
-      final Uint8List capturedFrame = Uint8List.fromList(
-        img.encodeJpg(displayImg, quality: 60),
-      );
-
-      // 3. AI inference — pre-resize then center-crop to 224x224 inside runInference
-      _setLoading(true, _loadingMessages[2]);
-      final img.Image aiImg = img.copyResize(decodedImg, width: _aiPreResizeWidth);
-      final ScanResult result = await _tfliteService.runInference(aiImg);
-
-      _setLoading(true, _loadingMessages[3]);
-
-      // 4. Auto-fill product name if confidence >= 50%
-      String productName = "";
-      if (result.isConfident) {
-        productName = formatLabel(result.product);
-        debugPrint("✅ Auto-fill: $productName (${result.confidence.toStringAsFixed(1)}%)");
-      } else {
-        debugPrint("⚠️ Low confidence (${result.confidence.toStringAsFixed(1)}%) — field left empty");
-      }
-
-      // 5. Navigate to Edit Screen
-      _setLoading(false, "");
-      NavigationService.navigateTo(
-        SugarEditScreen(
-          ocrImage: capturedFrame,
-          silentImages: List.from(silentFrames),
-          initialSugar: 0,
-          initialProductName: productName,
-          userEmail: userEmail,
-          suggestionName: result.isConfident ? null : formatLabel(result.product),
-          confidence: result.confidence,
-        ),
-      );
+      final List<Uint8List> frames = List.from(silentFrames);
       silentFrames.clear();
+
+      await _processImage(
+        originalBytes: originalBytes,
+        userEmail: userEmail,
+        capturedSilentFrames: frames,
+      );
     } catch (e) {
       debugPrint("❌ Capture Error: $e");
       _setLoading(false, "");
     }
   }
 
-  void _setLoading(bool value, String message) {
-    isAnalyzing = value;
-    loadingMessage = message;
-    notifyListeners();
-  }
-
-  /// Pick an image from gallery and run it through the AI pipeline.
   Future<void> onGalleryPressed(String userEmail) async {
     if (isAnalyzing) return;
 
@@ -249,48 +244,12 @@ class ScannerController with ChangeNotifier {
       if (picked == null) return;
 
       _setLoading(true, _loadingMessages[0]);
-
       final Uint8List originalBytes = await picked.readAsBytes();
-      final img.Image? decodedImg = img.decodeImage(originalBytes);
-      if (decodedImg == null) {
-        debugPrint("❌ decodeImage failed");
-        _setLoading(false, "");
-        return;
-      }
 
-      // Resize for display
-      _setLoading(true, _loadingMessages[1]);
-      final img.Image displayImg = img.copyResize(decodedImg, width: _displayImageWidth);
-      final Uint8List capturedFrame = Uint8List.fromList(
-        img.encodeJpg(displayImg, quality: 60),
-      );
-
-      // AI inference
-      _setLoading(true, _loadingMessages[2]);
-      final img.Image aiImg = img.copyResize(decodedImg, width: _aiPreResizeWidth);
-      final ScanResult result = await _tfliteService.runInference(aiImg);
-
-      _setLoading(true, _loadingMessages[3]);
-
-      String productName = "";
-      if (result.isConfident) {
-        productName = formatLabel(result.product);
-        debugPrint("✅ Auto-fill: $productName (${result.confidence.toStringAsFixed(1)}%)");
-      } else {
-        debugPrint("⚠️ Low confidence (${result.confidence.toStringAsFixed(1)}%) — field left empty");
-      }
-
-      _setLoading(false, "");
-      NavigationService.navigateTo(
-        SugarEditScreen(
-          ocrImage: capturedFrame,
-          silentImages: const [], // no silent frames for gallery images
-          initialSugar: 0,
-          initialProductName: productName,
-          userEmail: userEmail,
-          suggestionName: result.isConfident ? null : formatLabel(result.product),
-          confidence: result.confidence,
-        ),
+      await _processImage(
+        originalBytes: originalBytes,
+        userEmail: userEmail,
+        capturedSilentFrames: const [], // no silent frames for gallery
       );
     } catch (e) {
       debugPrint("❌ Gallery Error: $e");
@@ -298,9 +257,32 @@ class ScannerController with ChangeNotifier {
     }
   }
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  void _setLoading(bool value, String message) {
+    isAnalyzing = value;
+    loadingMessage = message;
+    notifyListeners();
+  }
+
+  /// Safely stop image stream — no-op if not streaming.
+  Future<void> _stopStreamSafely() async {
+    try {
+      if (controller != null &&
+          controller!.value.isInitialized &&
+          controller!.value.isStreamingImages) {
+        await controller!.stopImageStream();
+        debugPrint("⏸ Stream stopped");
+      }
+    } catch (_) {}
+  }
+
+  // ── Dispose ───────────────────────────────────────────────────────────────
+
   @override
   void dispose() {
-    controller?.dispose();
+    // Stop stream before disposing to prevent memory leaks
+    _stopStreamSafely().then((_) => controller?.dispose());
     super.dispose();
   }
 }

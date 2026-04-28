@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/sugar_edit_controller.dart';
 import '../controllers/sugar_provider.dart';
+import '../core/app_colors.dart';
 import '../models/sugar_entry.dart';
 import '../widgets/loading_overlay_widget.dart';
 import '../widgets/sugar_edit_widgets.dart';
@@ -53,9 +54,9 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
       listenable: _controller,
       builder: (context, _) {
         return Scaffold(
-          backgroundColor: const Color(0xFF12121A),
+          backgroundColor: AppColors.background,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF12121A),
+            backgroundColor: AppColors.background,
             elevation: 0,
             title: const Text(
               "Nutrition Input",
@@ -81,7 +82,7 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.tealAccent.withOpacity(0.1),
+                              color: Colors.tealAccent.withValues(alpha: 0.1),
                               blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
@@ -113,10 +114,10 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E1E2E),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: DynamicNutritionForm(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: DynamicNutritionForm(
                         category: _controller.selectedCategory,
                         productCtrl: _controller.productController,
                         varianCtrl: _controller.varianController,
@@ -149,10 +150,10 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1E1E2E),
+                            color: AppColors.card,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: Colors.tealAccent.withOpacity(0.3),
+                              color: Colors.tealAccent.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Row(
@@ -164,7 +165,7 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                                 "Total Sugar: ",
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: Colors.white.withOpacity(0.6),
+                                  color: Colors.white.withValues(alpha: 0.6),
                                 ),
                               ),
                               Text(
@@ -195,7 +196,7 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                                   ? Colors.tealAccent
                                   : Colors.white12,
                               foregroundColor: canSubmit
-                                  ? const Color(0xFF12121A)
+                                  ? AppColors.background
                                   : Colors.white38,
                               padding:
                                   const EdgeInsets.symmetric(vertical: 16),

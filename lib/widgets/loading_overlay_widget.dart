@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/app_colors.dart';
 
 /// Full-screen loading overlay used during AI processing (scan screen)
 /// and data upload (edit screen).
@@ -21,7 +22,7 @@ class LoadingOverlay extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 40),
           padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 28),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: AppColors.overlay,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 1),
           ),

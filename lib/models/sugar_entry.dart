@@ -19,7 +19,7 @@ class SugarEntry {
   final String volumeLabel;
   final DateTime timestamp;
 
-  /// URL from Cloudinary — persisted to local storage
+  /// URL from S3 — persisted to local storage
   final String? imageUrl;
 
   /// In-memory bytes for immediate display after scan — not persisted
