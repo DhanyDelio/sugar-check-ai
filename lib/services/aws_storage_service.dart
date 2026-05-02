@@ -1,11 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 
 /// AWS Storage Service — Flutter → API Gateway → Go Lambda → S3
 ///
@@ -16,16 +13,6 @@ import 'package:path_provider/path_provider.dart';
 ///   4. S3 event triggers Go Lambda for clustering
 class AwsStorageService {
   static String get _apiUrl => dotenv.env['API_GATEWAY_URL'] ?? '';
-
-  // ── Path normalization ────────────────────────────────────────────────────
-
-  static String _normalize(String value) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), '-')
-        .replaceAll(RegExp(r'[^a-z0-9\-]'), '');
-  }
 
   // ── Compression ───────────────────────────────────────────────────────────
 
@@ -70,15 +57,9 @@ class AwsStorageService {
     required String fileName,
     required String contentType,
   }) async {
-    final session = await Amplify.Auth.fetchAuthSession();
-    final token = session.toJson()['userPoolTokens']?['accessToken'] ?? '';
-
     final response = await http.post(
       Uri.parse('$_apiUrl/upload'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (token.isNotEmpty) 'Authorization': token,
-      },
+      headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({
         'user_id': userId,
         'product_name': productName,
