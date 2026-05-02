@@ -68,7 +68,6 @@ class AwsStorageService {
         'ai_confidence': aiConfidence,
         'file_name': fileName,
         'content_type': contentType,
-        'staging_folder': 'quarantine-dataset', // all uploads go here first
       }),
     );
 

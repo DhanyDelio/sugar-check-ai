@@ -27,7 +27,23 @@ const (
 	rateLimitMax    = 5
 	rateLimitWindow = 60 // seconds
 	presignExpiry   = 5 * time.Minute
+
+	// Max file sizes — matched to what the Flutter app actually sends:
+	// Primary image: 800px, quality 45 → ~60-100KB
+	// Silent frames: 400px, quality 30 → ~15-40KB
+	// JSON sidecar:  metadata only     → ~1-2KB
+	maxImageBytes = 200 * 1024 // 200KB — safe ceiling for compressed JPEG
+	maxJSONBytes  = 5 * 1024   // 5KB   — metadata only, never large
+
+	// Allowed staging folder — hardcoded, client cannot override
+	stagingFolder = "quarantine-dataset"
 )
+
+// Allowed content types — whitelist only
+var allowedContentTypes = map[string]bool{
+	"image/jpeg":       true,
+	"application/json": true,
+}
 
 // ── Structs ───────────────────────────────────────────────────────────────────
 
@@ -41,14 +57,14 @@ type SidecarMetadata struct {
 
 // PresignRequest is the body Flutter sends to /upload
 type PresignRequest struct {
-	UserID        string  `json:"user_id"`
-	ProductName   string  `json:"product_name"`
-	VariantName   string  `json:"variant_name"`
-	VolumeTotal   string  `json:"volume_total"`
-	Confidence    float64 `json:"ai_confidence"`
-	FileName      string  `json:"file_name"`
-	ContentType   string  `json:"content_type"`
-	StagingFolder string  `json:"staging_folder"` // e.g. "quarantine-dataset"
+	UserID      string  `json:"user_id"`
+	ProductName string  `json:"product_name"`
+	VariantName string  `json:"variant_name"`
+	VolumeTotal string  `json:"volume_total"`
+	Confidence  float64 `json:"ai_confidence"`
+	FileName    string  `json:"file_name"`
+	ContentType string  `json:"content_type"`
+	// StagingFolder intentionally removed — hardcoded server-side for security
 }
 
 // PresignResponse is returned to Flutter
@@ -86,10 +102,7 @@ func normalize(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
-func buildStagingPath(stagingFolder, userID, product, variant, volume, fileName string) string {
-	if stagingFolder == "" {
-		stagingFolder = "quarantine-dataset" // default — always quarantine first
-	}
+func buildStagingPath(product, variant, volume, fileName string) string {
 	p := normalize(product)
 	v := normalize(variant)
 	vol := normalize(volume)
@@ -212,6 +225,23 @@ func handlePresignRequest(ctx context.Context, req events.APIGatewayProxyRequest
 			Body: `{"error":"user_id and file_name are required"}`}, nil
 	}
 
+	// Validate content type — whitelist only
+	contentType := body.ContentType
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	if !allowedContentTypes[contentType] {
+		log.Printf("⛔ Rejected content_type: %s from UUID: %s", contentType, body.UserID)
+		return events.APIGatewayProxyResponse{StatusCode: 400, Headers: headers,
+			Body: `{"error":"content_type not allowed"}`}, nil
+	}
+
+	// Determine max file size based on content type
+	maxBytes := int64(maxImageBytes)
+	if contentType == "application/json" {
+		maxBytes = int64(maxJSONBytes)
+	}
+
 	// Rate limit check
 	limited, err := isRateLimited(ctx, body.UserID)
 	if err != nil {
@@ -223,26 +253,20 @@ func handlePresignRequest(ctx context.Context, req events.APIGatewayProxyRequest
 			Body: `{"error":"rate limit exceeded, try again later"}`}, nil
 	}
 
-	// Build staging S3 key
+	// Build staging S3 key — folder hardcoded server-side
 	s3Key := buildStagingPath(
-		body.StagingFolder,
-		body.UserID,
 		body.ProductName,
 		body.VariantName,
 		body.VolumeTotal,
 		body.FileName,
 	)
 
-	contentType := body.ContentType
-	if contentType == "" {
-		contentType = "image/jpeg"
-	}
-
-	// Generate presigned PUT URL
+	// Generate presigned PUT URL with content-type + size enforcement
 	presignResult, err := presigner.PresignPutObject(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String(bucketName),
-		Key:         aws.String(s3Key),
-		ContentType: aws.String(contentType),
+		Bucket:        aws.String(bucketName),
+		Key:           aws.String(s3Key),
+		ContentType:   aws.String(contentType),
+		ContentLength: aws.Int64(maxBytes),
 	}, func(o *s3.PresignOptions) {
 		o.Expires = presignExpiry
 	})
