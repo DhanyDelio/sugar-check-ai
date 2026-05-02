@@ -41,13 +41,14 @@ type SidecarMetadata struct {
 
 // PresignRequest is the body Flutter sends to /upload
 type PresignRequest struct {
-	UserID      string  `json:"user_id"`
-	ProductName string  `json:"product_name"`
-	VariantName string  `json:"variant_name"`
-	VolumeTotal string  `json:"volume_total"`
-	Confidence  float64 `json:"ai_confidence"`
-	FileName    string  `json:"file_name"` // e.g. "primary.jpg" or "frame_0.jpg"
-	ContentType string  `json:"content_type"` // "image/jpeg" or "application/json"
+	UserID        string  `json:"user_id"`
+	ProductName   string  `json:"product_name"`
+	VariantName   string  `json:"variant_name"`
+	VolumeTotal   string  `json:"volume_total"`
+	Confidence    float64 `json:"ai_confidence"`
+	FileName      string  `json:"file_name"`
+	ContentType   string  `json:"content_type"`
+	StagingFolder string  `json:"staging_folder"` // e.g. "quarantine-dataset"
 }
 
 // PresignResponse is returned to Flutter
@@ -85,12 +86,15 @@ func normalize(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
-func buildStagingPath(userID, product, variant, volume, fileName string) string {
+func buildStagingPath(stagingFolder, userID, product, variant, volume, fileName string) string {
+	if stagingFolder == "" {
+		stagingFolder = "quarantine-dataset" // default — always quarantine first
+	}
 	p := normalize(product)
 	v := normalize(variant)
 	vol := normalize(volume)
 	ts := fmt.Sprintf("%d", time.Now().UnixMilli())
-	return fmt.Sprintf("public/staging/%s/%s/%s/%s/%s_%s", userID, p, v, vol, ts, fileName)
+	return fmt.Sprintf("public/%s/%s/%s/%s/%s_%s", stagingFolder, p, v, vol, ts, fileName)
 }
 
 func isValidForCluster(m SidecarMetadata) bool {
@@ -221,6 +225,7 @@ func handlePresignRequest(ctx context.Context, req events.APIGatewayProxyRequest
 
 	// Build staging S3 key
 	s3Key := buildStagingPath(
+		body.StagingFolder,
 		body.UserID,
 		body.ProductName,
 		body.VariantName,
