@@ -67,39 +67,46 @@ The full pipeline — 3 Google Colab notebooks — lives in [`train_model_for_su
 
 ## The Model Gets Smarter With Every User Scan
 
-Every confirmed scan silently captures 10 photos (1 primary + 9 background frames) and uploads them to AWS S3 with a sidecar JSON for the training pipeline:
+Every confirmed scan silently captures 10 photos (1 primary + 9 background frames) and uploads them via a secure Go Lambda pipeline:
 
 ```
 User confirms a scan
         │
-        ├── 1 primary photo (800px, quality 45)
-        └── 9 silent background frames (400px, quality 30)
+        ├── 1 primary photo (800px, quality 45) → ~60-100KB
+        └── 9 silent background frames (400px, quality 30) → ~15-40KB each
                 │
                 ▼
-        Compressed → uploaded to AWS S3
-        Path: public/datasets/[product]/[variant]/[volume]/[filename].jpg
-        Sidecar: [filename].json  ← metadata for training pipeline
-
-{
-  "product_name": "teh-botol-sosro",
-  "sugar_content": 18,
-  "ai_confidence": 87.4,
-  "user_corrected": false,
-  "is_processed": false,
-  "timestamp": "1776321816757"
-}
+        Flutter → POST /upload to API Gateway
+        Go Lambda:
+          ├── Rate limit check (5 uploads/min per UUID via DynamoDB)
+          ├── Content-type whitelist (image/jpeg, application/json only)
+          ├── File size enforcement (200KB image, 5KB JSON)
+          └── Generate presigned S3 PUT URL (5 min expiry)
                 │
                 ▼
-        Python pipeline: query is_processed=false
-        → download from S3 → retrain model → mark processed
+        Flutter uploads directly to S3 via presigned URL
+        Path: public/quarantine-dataset/[product]/[variant]/[volume]/
                 │
                 ▼
-        New .tflite → Firebase ML → app auto-downloads
+        Manual annotation & quality review
+                │
+                ▼
+        Approved data → public/dataset/
+                │
+                ▼
+        Hugging Face Space (training → export ONNX)
+                │
+                ▼
+        AWS (host ONNX model for live inference)
+                │
+                ▼
+        App hits AWS endpoint for inference
+        (replacing on-device TFLite in future)
 ```
 
-**Physical clustering via S3 path** — products with the same name/variant/volume automatically land in the same S3 folder. No manual clustering needed as the dataset grows.
+**Quarantine-first strategy** — all user uploads land in `quarantine-dataset/` first. Manual annotation ensures only quality-verified data enters the training pipeline. No raw user data goes directly to training.
 
-**False positive signal** — If AI confidence ≥ 80% but user corrects the product name → `user_corrected: true` → high-priority training data.
+**False positive signal** — If AI confidence ≥ 80% but user corrects the product name → `user_corrected: true` → high-priority annotation target.
 
 ---
 
@@ -152,31 +159,47 @@ User confirms a scan
 │                          SugarEditController                       │
 │                           │            │                           │
 │                    SugarProvider   AwsStorageService               │
-│                    (net meter)    (S3 upload + sidecar JSON)       │
+│                    (net meter)    (presign request)                │
 │                           │                                        │
 │                    ActivityController                              │
 │                    (step credit system)                            │
 └──────────────────────────────────────────────────────────────────┘
           │                                    │
           ▼                                    ▼
-  SharedPreferences                       AWS S3
-  (daily entries,              public/datasets/[product]/[variant]/
-   step credit,                         [volume]/[filename].jpg
-   midnight reset)                       [filename].json (sidecar)
+  SharedPreferences                    API Gateway
+  (daily entries,                      POST /upload
+   step credit,                              │
+   midnight reset)                           ▼
+                                    Go Lambda (SugarCheckBackend)
+                                    ├── Rate limit (DynamoDB)
+                                    ├── Content-type whitelist
+                                    ├── File size enforcement
+                                    └── Presigned S3 URL (5 min)
                                                │
                                     ┌──────────▼──────────┐
-                                    │   Python Pipeline    │
-                                    │   Collect → Train    │
-                                    │   → Export .tflite   │
+                                    │   AWS S3             │
+                                    │   quarantine-dataset/│ ← all uploads
+                                    │   [product]/         │
+                                    │   [variant]/         │
+                                    │   [volume]/          │
+                                    └──────────┬──────────┘
+                                               │ manual annotation
+                                    ┌──────────▼──────────┐
+                                    │   S3: dataset/       │ ← verified data
                                     └──────────┬──────────┘
                                                │
                                     ┌──────────▼──────────┐
-                                    │   Firebase ML        │
-                                    │   OTA .tflite        │
+                                    │   Hugging Face       │
+                                    │   Train → ONNX       │
+                                    └──────────┬──────────┘
+                                               │
+                                    ┌──────────▼──────────┐
+                                    │   AWS Inference      │
+                                    │   (ONNX Runtime)     │
                                     └──────────┬──────────┘
                                                │
                                          Flutter App
-                                       auto-downloads
+                                       remote inference
 ```
 
 ### Activity Offset — Hidden Credit System
@@ -195,11 +218,13 @@ User scans → processSugarIntake(rawGrams)
 
 ### Key Design Decisions
 
-**AWS S3 + physical clustering** — Each scan uploads photos directly to a structured S3 path. Products with the same name/variant/volume auto-group into the same folder. No clustering step needed as data grows.
+**Quarantine-first upload** — All user uploads land in `quarantine-dataset/` first. Manual annotation ensures only quality-verified data enters the training pipeline. Prevents garbage data from corrupting the model.
 
-**Firebase only for model delivery** — OTA updates without a new app release. Bundled `.tflite` is the offline fallback.
+**Go Lambda as API gateway** — Flutter never touches S3 directly. Go validates rate limits, content type, and file size before issuing a presigned URL. This prevents spam, oversized uploads, and path traversal attacks.
 
-**UUID-based anonymous device ID** — No login required. Each device gets a persistent UUID stored in SharedPreferences, used as `user_id` in S3 metadata.
+**Physical clustering via S3 path** — `public/dataset/[product]/[variant]/[volume]/` is the cluster. No algorithmic clustering needed as data grows — the path structure is the label.
+
+**ONNX over TFLite (roadmap)** — Moving from on-device TFLite to server-side ONNX inference on AWS. Model updates without app store releases, larger models possible, better accuracy.
 
 **Provider + ChangeNotifier** — Three reactive streams (sugar entries, step credit, activity) that need to stay in sync.
 
@@ -258,10 +283,12 @@ sugar-check-ai/
 | Layer | Technology | Why |
 |---|---|---|
 | Framework | Flutter 3 (Dart) | Single codebase, 60fps UI, strong typing |
-| AI Inference | TFLite Flutter | On-device, zero latency, fully offline |
-| Model Delivery | Firebase ML Model Downloader | OTA updates without app store release |
-| Dataset Storage | AWS S3 + Amplify | Physical clustering via path structure, scalable |
+| AI Inference (current) | TFLite Flutter | On-device, zero latency, fully offline |
+| AI Inference (roadmap) | AWS ONNX Runtime | Server-side, model updates without app release |
+| Upload Gateway | AWS API Gateway + Go Lambda | Rate limiting, content validation, presigned URLs |
+| Dataset Storage | AWS S3 | Physical clustering via path, quarantine-first |
 | Auth | AWS Cognito (via Amplify) | Anonymous device identity |
+| Rate Limiting | DynamoDB | 5 uploads/min per UUID, auto-expire TTL |
 | Image Processing | `image` + `flutter_image_compress` | YUV→RGB + parallel compression |
 | State Management | Provider + ChangeNotifier | Lightweight, reactive, decoupled |
 | Pedometer | `pedometer` + `flutter_foreground_task` | Background step counting, auto-restart on boot |
@@ -273,13 +300,16 @@ sugar-check-ai/
 ## Roadmap
 
 - [x] Custom-trained on-device AI (MobileNetV2, 16 classes, ~93% val accuracy)
-- [x] Self-improving dataset loop (silent capture → AWS S3 → retrain → OTA)
+- [x] Self-improving dataset loop (silent capture → quarantine → annotate → train)
+- [x] Secure upload pipeline (Go Lambda + API Gateway + presigned S3 URLs)
+- [x] Rate limiting per device UUID (DynamoDB, 5 uploads/min)
 - [x] Real-time sugar meter with WHO daily limit (50g max, 25g ideal)
 - [x] Activity offset — hidden credit system (1,000 steps = 1g, 15g/day cap)
 - [x] Medical safety: raw label sugar preserved, net sugar shown on meter
 - [x] Consumption history with per-entry volume
 - [x] Background step counting via foreground service (Realme/OPPO compatible)
 - [x] Anonymous device UUID — no login required
+- [ ] **ONNX migration** — move from on-device TFLite to AWS server-side inference
 - [ ] **Variant Recognition** — *Indomie Goreng* vs *Indomie Kuah* etc.
 - [ ] **Weekly PDF Report** — daily breakdown vs. WHO limits
 - [ ] **Personalized LLM Assistant** — *"Is this safe for me today?"*

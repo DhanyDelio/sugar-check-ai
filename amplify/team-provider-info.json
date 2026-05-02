@@ -23,7 +23,7 @@
         "SugarCheckBackend": {
           "s3BucketName": "sugarcheck921ec07776184ca6a8d65e11506a6c30ed564-dev",
           "deploymentBucketName": "amplify-sugarcheck-dev-ed564-deployment",
-          "s3Key": "amplify-builds/SugarCheckBackend-344d4e30313038527456-build.zip"
+          "s3Key": "amplify-builds/SugarCheckBackend-31576455746471635862-build.zip"
         }
       },
       "api": {
