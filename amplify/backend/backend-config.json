@@ -1,4 +1,20 @@
 {
+  "api": {
+    "sugarCheckAPI": {
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "SugarCheckBackend"
+        }
+      ],
+      "providerPlugin": "awscloudformation",
+      "service": "API Gateway"
+    }
+  },
   "auth": {
     "sugarcheckc16085d4": {
       "customAuth": false,
@@ -25,9 +41,53 @@
       "service": "Cognito"
     }
   },
+  "function": {
+    "SugarCheckBackend": {
+      "build": true,
+      "dependsOn": [],
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
+  },
+  "parameters": {
+    "AMPLIFY_function_SugarCheckBackend_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "SugarCheckBackend"
+        }
+      ]
+    },
+    "AMPLIFY_function_SugarCheckBackend_s3BucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "SugarCheckBackend"
+        }
+      ]
+    },
+    "AMPLIFY_function_SugarCheckBackend_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "SugarCheckBackend"
+        }
+      ]
+    }
+  },
   "storage": {
     "s3c6b5505b": {
-      "dependsOn": [],
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn",
+            "LambdaExecutionRole"
+          ],
+          "category": "function",
+          "resourceName": "SugarCheckBackend"
+        }
+      ],
       "providerPlugin": "awscloudformation",
       "service": "S3"
     }

@@ -2,40 +2,29 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-/// AWS S3 storage service for training data upload.
+/// AWS Storage Service — Flutter → API Gateway → Go Lambda → S3
 ///
-/// S3 path structure (Physical Clustering):
-///   public/datasets/[product]/[variant]/[volume]/[filename].jpg
-///   public/datasets/[product]/[variant]/[volume]/[filename].json  ← sidecar
-///
-/// Normalization: lowercase, trim, spaces → hyphens
-/// This ensures "Teh Botol" and "teh botol" map to the same S3 folder.
+/// Flow:
+///   1. Flutter sends metadata to Go Lambda via API Gateway POST /upload
+///   2. Go validates UUID rate limit, generates presigned S3 PUT URL
+///   3. Flutter uploads file directly to S3 via presigned URL
+///   4. S3 event triggers Go Lambda for clustering
 class AwsStorageService {
+  static String get _apiUrl => dotenv.env['API_GATEWAY_URL'] ?? '';
+
   // ── Path normalization ────────────────────────────────────────────────────
 
-  /// Normalize a path segment: lowercase, trim, spaces → hyphens.
-  /// e.g. "Teh Botol Sosro " → "teh-botol-sosro"
   static String _normalize(String value) {
     return value
         .trim()
         .toLowerCase()
         .replaceAll(RegExp(r'\s+'), '-')
         .replaceAll(RegExp(r'[^a-z0-9\-]'), '');
-  }
-
-  /// Build the S3 folder path for a given product/variant/volume.
-  static String _buildFolderPath({
-    required String productName,
-    required String variantName,
-    required String volume,
-  }) {
-    final product = _normalize(productName.isNotEmpty ? productName : 'unknown');
-    final variant = _normalize(variantName.isNotEmpty ? variantName : 'original');
-    final vol     = _normalize(volume.isNotEmpty ? volume : 'unknown');
-    return 'public/datasets/$product/$variant/$vol';
   }
 
   // ── Compression ───────────────────────────────────────────────────────────
@@ -48,7 +37,9 @@ class AwsStorageService {
       quality: 45,
       format: CompressFormat.jpeg,
     );
-    debugPrint("  🗄 [primary] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
+    debugPrint(
+      "  🗜 [primary] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes",
+    );
     return compressed;
   }
 
@@ -60,66 +51,119 @@ class AwsStorageService {
       quality: 30,
       format: CompressFormat.jpeg,
     );
-    debugPrint("  🗄 [frame_$index] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes");
+    debugPrint(
+      "  🗜 [frame_$index] ${bytes.lengthInBytes} → ${compressed.lengthInBytes} bytes",
+    );
     return compressed;
   }
 
-  // ── Core upload ───────────────────────────────────────────────────────────
+  // ── Presigned URL request ─────────────────────────────────────────────────
 
-  /// Upload a single image file to S3, return the S3 key.
-  Future<String> _uploadImageToS3({
-    required Uint8List imageBytes,
-    required String s3Key,
+  /// Request a presigned S3 PUT URL from Go Lambda via API Gateway.
+  /// Returns {upload_url, s3_key} or throws on rate limit / error.
+  Future<Map<String, String>> _requestPresignedUrl({
+    required String userId,
+    required String productName,
+    required String variantName,
+    required String volumeTotal,
+    required double aiConfidence,
+    required String fileName,
+    required String contentType,
   }) async {
-    final dir = await getTemporaryDirectory();
-    final tempFile = File('${dir.path}/${s3Key.split('/').last}');
-    await tempFile.writeAsBytes(imageBytes);
+    final session = await Amplify.Auth.fetchAuthSession();
+    final token = session.toJson()['userPoolTokens']?['accessToken'] ?? '';
 
-    try {
-      final result = await Amplify.Storage.uploadFile(
-        localFile: AWSFile.fromPath(tempFile.path),
-        path: StoragePath.fromString(s3Key),
-        options: const StorageUploadFileOptions(
-          metadata: {'content-type': 'image/jpeg'},
-        ),
-      ).result;
+    final response = await http.post(
+      Uri.parse('$_apiUrl/upload'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token.isNotEmpty) 'Authorization': token,
+      },
+      body: jsonEncode({
+        'user_id': userId,
+        'product_name': productName,
+        'variant_name': variantName,
+        'volume_total': volumeTotal,
+        'ai_confidence': aiConfidence,
+        'file_name': fileName,
+        'content_type': contentType,
+      }),
+    );
 
-      debugPrint("  ☁️ S3 uploaded: ${result.uploadedItem.path}");
-      return result.uploadedItem.path;
-    } finally {
-      await tempFile.delete();
+    if (response.statusCode == 429) {
+      throw Exception('Rate limit exceeded — try again in a minute');
     }
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Presign request failed: ${response.statusCode} ${response.body}',
+      );
+    }
+
+    final Map<String, dynamic> body = jsonDecode(response.body);
+    return {
+      'upload_url': body['upload_url'] as String,
+      's3_key': body['s3_key'] as String,
+    };
   }
 
-  /// Upload a sidecar JSON file to S3 alongside the image.
+  // ── Direct S3 upload via presigned URL ────────────────────────────────────
+
+  Future<String> _uploadViaPresignedUrl({
+    required Uint8List bytes,
+    required String presignedUrl,
+    required String contentType,
+  }) async {
+    final uploadResponse = await http.put(
+      Uri.parse(presignedUrl),
+      headers: {'Content-Type': contentType},
+      body: bytes,
+    );
+
+    if (uploadResponse.statusCode != 200) {
+      throw Exception('S3 upload failed: ${uploadResponse.statusCode}');
+    }
+
+    debugPrint("  ☁️ Uploaded via presigned URL");
+    return presignedUrl.split('?').first; // return clean S3 URL
+  }
+
+  // ── Sidecar JSON upload ───────────────────────────────────────────────────
+
   Future<void> _uploadSidecarJson({
     required Map<String, dynamic> metadata,
-    required String s3Key, // same path as image but .json extension
+    required String userId,
+    required String productName,
+    required String variantName,
+    required String volumeTotal,
+    required double aiConfidence,
+    required String fileName,
   }) async {
-    final dir = await getTemporaryDirectory();
-    final tempFile = File('${dir.path}/${s3Key.split('/').last}');
-    await tempFile.writeAsString(jsonEncode(metadata));
+    final presign = await _requestPresignedUrl(
+      userId: userId,
+      productName: productName,
+      variantName: variantName,
+      volumeTotal: volumeTotal,
+      aiConfidence: aiConfidence,
+      fileName: fileName,
+      contentType: 'application/json',
+    );
 
-    try {
-      await Amplify.Storage.uploadFile(
-        localFile: AWSFile.fromPath(tempFile.path),
-        path: StoragePath.fromString(s3Key),
-        options: const StorageUploadFileOptions(
-          metadata: {'content-type': 'application/json'},
-        ),
-      ).result;
+    final Uint8List jsonBytes = Uint8List.fromList(
+      utf8.encode(jsonEncode(metadata)),
+    );
 
-      debugPrint("  📄 Sidecar JSON uploaded: $s3Key");
-    } finally {
-      await tempFile.delete();
-    }
+    await _uploadViaPresignedUrl(
+      bytes: jsonBytes,
+      presignedUrl: presign['upload_url']!,
+      contentType: 'application/json',
+    );
+
+    debugPrint("  📄 Sidecar JSON uploaded: ${presign['s3_key']}");
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /// Upload training data to S3 with smart physical clustering.
-  ///
-  /// Each photo gets a sidecar .json with metadata for the training pipeline.
+  /// Upload training data via Go Lambda presigned URL flow.
   /// Returns the S3 key of the primary image.
   Future<String> uploadTrainingData({
     required Uint8List primaryImage,
@@ -135,72 +179,102 @@ class AwsStorageService {
   }) async {
     final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
     final String cleanUserId = userId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-    final String volumeStr = volumeTotal > 0 ? '${volumeTotal.toStringAsFixed(0)}ml' : 'unknown';
+    final String volumeStr = volumeTotal > 0
+        ? '${volumeTotal.toStringAsFixed(0)}ml'
+        : 'unknown';
 
-    final String folder = _buildFolderPath(
-      productName: productName,
-      variantName: variantName,
-      volume: volumeStr,
-    );
+    debugPrint("☁️ Starting upload via API Gateway → S3");
 
-    debugPrint("☁️ S3 folder: $folder");
-
-    // Base metadata for all sidecar JSONs
     final Map<String, dynamic> baseMetadata = {
-      'product_name':    productName,
-      'variant_name':    variantName,
-      'volume_total':    volumeTotal,
-      'sugar_content':   sugarValue.toDouble(),
-      'ai_confidence':   aiConfidence,
+      'product_name': productName,
+      'variant_name': variantName,
+      'volume_total': volumeTotal,
+      'sugar_content': sugarValue.toDouble(),
+      'ai_confidence': aiConfidence,
       'ai_product_name': aiProductName,
-      'user_corrected':  isHighPriority,
-      'user_id':         cleanUserId,
-      'is_processed':    false,
-      'timestamp':       timestamp,
+      'user_corrected': isHighPriority,
+      'user_id': cleanUserId,
+      'is_processed': false,
+      'timestamp': timestamp,
     };
 
-    // 1. Compress + upload primary image with sidecar
-    debugPrint("☁️ Uploading primary image...");
+    // 1. Compress primary
+    debugPrint("☁️ Compressing primary image...");
     final Uint8List primaryBytes = await _compressPrimary(primaryImage);
-    final String primaryKey = '$folder/${timestamp}_primary.jpg';
-    final String primaryJsonKey = '$folder/${timestamp}_primary.json';
+    final String primaryFileName = '${timestamp}_primary.jpg';
 
-    final String uploadedKey = await _uploadImageToS3(
-      imageBytes: primaryBytes,
-      s3Key: primaryKey,
+    // 2. Request presigned URL for primary image
+    final presign = await _requestPresignedUrl(
+      userId: cleanUserId,
+      productName: productName,
+      variantName: variantName,
+      volumeTotal: volumeStr,
+      aiConfidence: aiConfidence,
+      fileName: primaryFileName,
+      contentType: 'image/jpeg',
     );
 
+    // 3. Upload primary image
+    final String primaryUrl = await _uploadViaPresignedUrl(
+      bytes: primaryBytes,
+      presignedUrl: presign['upload_url']!,
+      contentType: 'image/jpeg',
+    );
+    debugPrint("✅ Primary uploaded: ${presign['s3_key']}");
+
+    // 4. Upload primary sidecar JSON
     await _uploadSidecarJson(
       metadata: {...baseMetadata, 'frame_type': 'primary'},
-      s3Key: primaryJsonKey,
+      userId: cleanUserId,
+      productName: productName,
+      variantName: variantName,
+      volumeTotal: volumeStr,
+      aiConfidence: aiConfidence,
+      fileName: '${timestamp}_primary.json',
     );
 
-    // 2. Compress + upload silent frames in parallel with sidecar
+    // 5. Compress + upload silent frames in parallel
     debugPrint("☁️ Uploading ${silentFramesList.length} silent frames...");
-
-    // Compress all frames in parallel first
     final List<Uint8List> compressedFrames = await Future.wait(
       silentFramesList.asMap().entries.map(
         (e) => _compressSilentFrame(e.value, e.key),
       ),
     );
 
-    // Upload all frames + sidecars in parallel
     await Future.wait(
       compressedFrames.asMap().entries.map((entry) async {
         final int i = entry.key;
-        final String frameKey = '$folder/${timestamp}_frame_$i.jpg';
-        final String frameJsonKey = '$folder/${timestamp}_frame_$i.json';
-
-        await _uploadImageToS3(imageBytes: entry.value, s3Key: frameKey);
+        final framePresign = await _requestPresignedUrl(
+          userId: cleanUserId,
+          productName: productName,
+          variantName: variantName,
+          volumeTotal: volumeStr,
+          aiConfidence: aiConfidence,
+          fileName: '${timestamp}_frame_$i.jpg',
+          contentType: 'image/jpeg',
+        );
+        await _uploadViaPresignedUrl(
+          bytes: entry.value,
+          presignedUrl: framePresign['upload_url']!,
+          contentType: 'image/jpeg',
+        );
         await _uploadSidecarJson(
-          metadata: {...baseMetadata, 'frame_type': 'silent_frame', 'frame_index': i},
-          s3Key: frameJsonKey,
+          metadata: {
+            ...baseMetadata,
+            'frame_type': 'silent_frame',
+            'frame_index': i,
+          },
+          userId: cleanUserId,
+          productName: productName,
+          variantName: variantName,
+          volumeTotal: volumeStr,
+          aiConfidence: aiConfidence,
+          fileName: '${timestamp}_frame_$i.json',
         );
       }),
     );
 
-    debugPrint("🚀 S3 upload complete! folder: $folder");
-    return uploadedKey;
+    debugPrint("🚀 All uploads complete via API Gateway!");
+    return primaryUrl;
   }
 }

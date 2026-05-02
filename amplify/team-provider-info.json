@@ -9,7 +9,8 @@
       "UnauthRoleName": "amplify-sugarcheck-dev-ed564-unauthRole",
       "StackName": "amplify-sugarcheck-dev-ed564",
       "StackId": "arn:aws:cloudformation:ap-southeast-1:942195278715:stack/amplify-sugarcheck-dev-ed564/f3eb2ab0-42e7-11f1-ad5e-0a5f26d3da89",
-      "AmplifyAppId": "d1hllg0s4zgqob"
+      "AmplifyAppId": "d1hllg0s4zgqob",
+      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-sugarcheck-dev-ed564-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
     },
     "categories": {
       "auth": {
@@ -17,6 +18,16 @@
       },
       "storage": {
         "s3c6b5505b": {}
+      },
+      "function": {
+        "SugarCheckBackend": {
+          "s3BucketName": "sugarcheck921ec07776184ca6a8d65e11506a6c30ed564-dev",
+          "deploymentBucketName": "amplify-sugarcheck-dev-ed564-deployment",
+          "s3Key": "amplify-builds/SugarCheckBackend-344d4e30313038527456-build.zip"
+        }
+      },
+      "api": {
+        "sugarCheckAPI": {}
       }
     }
   }

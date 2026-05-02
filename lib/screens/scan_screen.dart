@@ -70,12 +70,17 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: (_isReady && _scannerLogic.controller != null && _scannerLogic.controller!.value.isInitialized)
+                      child:
+                          (_isReady &&
+                              _scannerLogic.controller != null &&
+                              _scannerLogic.controller!.value.isInitialized)
                           ? CameraPreviewWidget(
-                              controller: _scannerLogic.controller!)
+                              controller: _scannerLogic.controller!,
+                            )
                           : const Center(
                               child: CircularProgressIndicator(
-                                  color: Colors.green),
+                                color: Colors.green,
+                              ),
                             ),
                     ),
                     const ScannerOverlayWidget(),
@@ -84,8 +89,11 @@ class _ScanScreenState extends State<ScanScreen> {
                       left: 8,
                       child: IconButton(
                         onPressed: () => MainScreen.switchToHome(),
-                        icon: const Icon(Icons.arrow_back,
-                            color: Colors.white, size: 30),
+                        icon: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
                     ),
                     Positioned(
@@ -94,18 +102,22 @@ class _ScanScreenState extends State<ScanScreen> {
                       child: IconButton(
                         onPressed: _scannerLogic.isAnalyzing
                             ? null
-                            : () => _scannerLogic.toggleFlash(!_scannerLogic.isFlashOn),
+                            : () => _scannerLogic.toggleFlash(
+                                !_scannerLogic.isFlashOn,
+                              ),
                         icon: Icon(
-                          _scannerLogic.isFlashOn ? Icons.flash_on : Icons.flash_off,
-                          color: _scannerLogic.isAnalyzing ? Colors.white38 : Colors.white,
+                          _scannerLogic.isFlashOn
+                              ? Icons.flash_on
+                              : Icons.flash_off,
+                          color: _scannerLogic.isAnalyzing
+                              ? Colors.white38
+                              : Colors.white,
                           size: 30,
                         ),
                       ),
                     ),
                     if (_scannerLogic.isAnalyzing)
-                      LoadingOverlay(
-                        message: _scannerLogic.loadingMessage,
-                      ),
+                      LoadingOverlay(message: _scannerLogic.loadingMessage),
                   ],
                 ),
               ),
@@ -115,10 +127,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 width: double.infinity,
                 height: _controlBarHeight + bottomPadding,
                 color: Colors.black,
-                padding: EdgeInsets.only(
-                  top: 12,
-                  bottom: bottomPadding + 12,
-                ),
+                padding: EdgeInsets.only(top: 12, bottom: bottomPadding + 12),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -136,11 +145,21 @@ class _ScanScreenState extends State<ScanScreen> {
                           ? () {}
                           : () => _scannerLogic.onCapturePressed(_userId),
                     ),
-                    _ControlButton(
-                      icon: Icons.photo_library_outlined,
-                      onTap: _scannerLogic.isAnalyzing
-                          ? null
-                          : () => _scannerLogic.onGalleryPressed(_userId),
+                    // Flash button
+                    ListenableBuilder(
+                      listenable: _scannerLogic,
+                      builder: (context, _) {
+                        final bool isOn = _scannerLogic.isFlashOn;
+                        return _ControlButton(
+                          icon: isOn
+                              ? Icons.flash_on_rounded
+                              : Icons.flash_off_rounded,
+                          isActive: isOn,
+                          onTap: _scannerLogic.isAnalyzing
+                              ? null
+                              : () => _scannerLogic.toggleFlash(!isOn),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -156,8 +175,9 @@ class _ScanScreenState extends State<ScanScreen> {
 class _ControlButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
+  final bool isActive;
 
-  const _ControlButton({required this.icon, this.onTap});
+  const _ControlButton({required this.icon, this.onTap, this.isActive = false});
 
   @override
   Widget build(BuildContext context) {
@@ -167,11 +187,20 @@ class _ControlButton extends StatelessWidget {
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
+          color: isActive
+              ? Colors.tealAccent.withValues(alpha: 0.25)
+              : Colors.white.withValues(alpha: 0.15),
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white38, width: 1.5),
+          border: Border.all(
+            color: isActive ? Colors.tealAccent : Colors.white38,
+            width: 1.5,
+          ),
         ),
-        child: Icon(icon, color: Colors.white, size: 22),
+        child: Icon(
+          icon,
+          color: isActive ? Colors.tealAccent : Colors.white,
+          size: 22,
+        ),
       ),
     );
   }

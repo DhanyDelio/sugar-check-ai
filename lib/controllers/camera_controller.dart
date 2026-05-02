@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:sugarcheck/core/navigation/navigation_service.dart';
 import '../services/tflite_service.dart';
 import '../utils/image_utils.dart';
@@ -27,10 +26,10 @@ class ScannerController with ChangeNotifier {
   bool isFlashOn = false;
   bool _hasCheckedBrightness = false;
 
-  static const int _silentFrameCount      = 9;
+  static const int _silentFrameCount = 9;
   static const int _silentFrameIntervalMs = 500;
-  static const int _aiPreResizeWidth      = 800;
-  static const int _displayImageWidth     = 400;
+  static const int _aiPreResizeWidth = 800;
+  static const int _displayImageWidth = 400;
 
   static const List<String> _loadingMessages = [
     "Analyzing packaging...",
@@ -73,7 +72,8 @@ class ScannerController with ChangeNotifier {
   Future<void> flipCamera() async {
     if (_availableCameras.length < 2 || isAnalyzing) return;
     final next = _availableCameras.firstWhere(
-      (c) => c.lensDirection !=
+      (c) =>
+          c.lensDirection !=
           (_currentCamera?.lensDirection ?? CameraLensDirection.back),
       orElse: () => _availableCameras.first,
     );
@@ -134,7 +134,9 @@ class ScannerController with ChangeNotifier {
               }
               final avg = total / 100;
               if (avg < 40 && !isFlashOn) {
-                debugPrint("💡 Light meter: Low light detected ($avg). User can manually enable flash if needed.");
+                debugPrint(
+                  "💡 Light meter: Low light detected ($avg). User can manually enable flash if needed.",
+                );
                 // auto-enable flash is removed per user request: default false.
               }
             }
@@ -144,7 +146,8 @@ class ScannerController with ChangeNotifier {
         }
 
         if (frameCount < _silentFrameCount &&
-            now.difference(lastFrameTime).inMilliseconds > _silentFrameIntervalMs) {
+            now.difference(lastFrameTime).inMilliseconds >
+                _silentFrameIntervalMs) {
           final img.Image converted = ImageUtils.convertYUV420ToImage(image);
           final Uint8List compressed = Uint8List.fromList(
             img.encodeJpg(converted, quality: 35),
@@ -157,7 +160,8 @@ class ScannerController with ChangeNotifier {
           if (controller!.value.isStreamingImages) {
             controller!.stopImageStream();
             debugPrint("✅ Silent capture done ($_silentFrameCount frames).");
-            if (_silentCaptureCompleter != null && !_silentCaptureCompleter!.isCompleted) {
+            if (_silentCaptureCompleter != null &&
+                !_silentCaptureCompleter!.isCompleted) {
               _silentCaptureCompleter!.complete();
             }
           }
@@ -166,7 +170,8 @@ class ScannerController with ChangeNotifier {
     } catch (e) {
       debugPrint("❌ Silent capture error: $e");
       _silentCaptureError = true;
-      if (_silentCaptureCompleter != null && !_silentCaptureCompleter!.isCompleted) {
+      if (_silentCaptureCompleter != null &&
+          !_silentCaptureCompleter!.isCompleted) {
         _silentCaptureCompleter!.complete();
       }
     }
@@ -191,16 +196,20 @@ class ScannerController with ChangeNotifier {
 
     // Resize for UI display
     _setLoading(true, _loadingMessages[1]);
-    final img.Image displayImg =
-        img.copyResize(decodedImg, width: _displayImageWidth);
+    final img.Image displayImg = img.copyResize(
+      decodedImg,
+      width: _displayImageWidth,
+    );
     final Uint8List capturedFrame = Uint8List.fromList(
       img.encodeJpg(displayImg, quality: 60),
     );
 
     // AI inference
     _setLoading(true, _loadingMessages[2]);
-    final img.Image aiImg =
-        img.copyResize(decodedImg, width: _aiPreResizeWidth);
+    final img.Image aiImg = img.copyResize(
+      decodedImg,
+      width: _aiPreResizeWidth,
+    );
     final ScanResult result = await _tfliteService.runInference(aiImg);
 
     _setLoading(true, _loadingMessages[3]);
@@ -210,9 +219,13 @@ class ScannerController with ChangeNotifier {
         : "";
 
     if (result.isConfident) {
-      debugPrint("✅ Auto-fill: $productName (${result.confidence.toStringAsFixed(1)}%)");
+      debugPrint(
+        "✅ Auto-fill: $productName (${result.confidence.toStringAsFixed(1)}%)",
+      );
     } else {
-      debugPrint("⚠️ Low confidence (${result.confidence.toStringAsFixed(1)}%) — field left empty");
+      debugPrint(
+        "⚠️ Low confidence (${result.confidence.toStringAsFixed(1)}%) — field left empty",
+      );
     }
 
     _setLoading(false, "");
@@ -252,7 +265,8 @@ class ScannerController with ChangeNotifier {
   }
 
   Future<void> onCapturePressed(String userEmail) async {
-    if (isAnalyzing || controller == null || !controller!.value.isInitialized) return;
+    if (isAnalyzing || controller == null || !controller!.value.isInitialized)
+      return;
 
     // Clear any previous error so UI resets on retry
     errorMessage = null;
@@ -264,17 +278,23 @@ class ScannerController with ChangeNotifier {
           controller!.value.isStreamingImages &&
           !_silentCaptureError) {
         _setLoading(true, "Preparing camera...");
-        debugPrint("⏳ Waiting for silent frames (${silentFrames.length}/$_silentFrameCount)...");
-        
+        debugPrint(
+          "⏳ Waiting for silent frames (${silentFrames.length}/$_silentFrameCount)...",
+        );
+
         try {
           if (_silentCaptureCompleter != null) {
-            await _silentCaptureCompleter!.future.timeout(const Duration(seconds: 5));
+            await _silentCaptureCompleter!.future.timeout(
+              const Duration(seconds: 5),
+            );
           }
         } catch (e) {
           debugPrint("⚠️ Wait for silent frames timed out or errored: $e");
         }
-        
-        debugPrint("✅ Silent frames ready: ${silentFrames.length}/$_silentFrameCount");
+
+        debugPrint(
+          "✅ Silent frames ready: ${silentFrames.length}/$_silentFrameCount",
+        );
       }
 
       // Abort if the camera stream failed — don't silently proceed with 0 frames
@@ -306,30 +326,6 @@ class ScannerController with ChangeNotifier {
     }
   }
 
-  Future<void> onGalleryPressed(String userEmail) async {
-    if (isAnalyzing) return;
-
-    try {
-      final XFile? picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 90,
-      );
-      if (picked == null) return;
-
-      _setLoading(true, _loadingMessages[0]);
-      final Uint8List originalBytes = await picked.readAsBytes();
-
-      await _processImage(
-        originalBytes: originalBytes,
-        userEmail: userEmail,
-        capturedSilentFrames: const [], // no silent frames for gallery
-      );
-    } catch (e) {
-      debugPrint("❌ Gallery Error: $e");
-      _setLoading(false, "");
-    }
-  }
-
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   void _setLoading(bool value, String message) {
@@ -352,7 +348,7 @@ class ScannerController with ChangeNotifier {
   Future<void> releaseCamera() async {
     final CameraController? temp = controller;
     if (temp == null) return;
-    
+
     // Set to null immediately so UI shows loading instead of frozen preview
     controller = null;
     notifyListeners();
