@@ -5,9 +5,10 @@ import 'package:provider/provider.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_storage_s3/amplify_storage_s3.dart';
+import 'package:amplify_api/amplify_api.dart';
 import 'amplifyconfiguration.dart';
 import 'core/app_colors.dart';
-import 'screens/main_screen.dart';
+import 'widgets/app_shell.dart';
 import 'core/navigation/navigation_service.dart';
 import 'controllers/sugar_provider.dart';
 import 'controllers/activity_controller.dart';
@@ -17,6 +18,7 @@ Future<void> _configureAmplify() async {
     await Amplify.addPlugins([
       AmplifyAuthCognito(),
       AmplifyStorageS3(),
+      AmplifyAPI(),
     ]);
     await Amplify.configure(amplifyconfig);
     debugPrint("✅ Amplify configured successfully");
@@ -69,16 +71,20 @@ class MyApp extends StatelessWidget {
             labelTextStyle: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
                 return const TextStyle(
-                    color: Colors.tealAccent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600);
+                  color: Colors.tealAccent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                );
               }
-              return TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11);
+              return TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 11,
+              );
             }),
           ),
           useMaterial3: true,
         ),
-        home: MainScreen(key: MainScreen.globalKey),
+        home: AppShell(key: AppShell.globalKey),
       ),
     );
   }

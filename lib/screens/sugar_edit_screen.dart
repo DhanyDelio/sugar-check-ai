@@ -7,7 +7,7 @@ import '../core/app_colors.dart';
 import '../models/sugar_entry.dart';
 import '../widgets/loading_overlay_widget.dart';
 import '../widgets/sugar_edit_widgets.dart';
-import 'main_screen.dart';
+import '../widgets/app_shell.dart';
 
 class SugarEditScreen extends StatefulWidget {
   final Uint8List ocrImage;
@@ -114,10 +114,10 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                            color: AppColors.card,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: DynamicNutritionForm(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: DynamicNutritionForm(
                         category: _controller.selectedCategory,
                         productCtrl: _controller.productController,
                         varianCtrl: _controller.varianController,
@@ -158,8 +158,11 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.water_drop_outlined,
-                                  color: Colors.tealAccent, size: 20),
+                              const Icon(
+                                Icons.water_drop_outlined,
+                                color: Colors.tealAccent,
+                                size: 20,
+                              ),
                               const SizedBox(width: 10),
                               Text(
                                 "Total Sugar: ",
@@ -198,8 +201,7 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                               foregroundColor: canSubmit
                                   ? AppColors.background
                                   : Colors.white38,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                               ),
@@ -215,39 +217,48 @@ class _SugarEditScreenState extends State<SugarEditScreen> {
                             ),
                             onPressed: canSubmit
                                 ? () async {
-                                    final provider =
-                                        context.read<SugarProvider>();
+                                    final provider = context
+                                        .read<SugarProvider>();
                                     final navigator = Navigator.of(context);
-                                    final bool success =
-                                        await _controller.uploadData(
+                                    final bool
+                                    success = await _controller.uploadData(
                                       widget.userEmail,
                                       widget.ocrImage,
-                                      onSuccess: (totalSugar, volumeTotal, imageUrl) {
-                                        final bool isBeverage = _controller.selectedCategory == ProductCategory.minuman;
-                                        final String unit = isBeverage ? 'ml' : 'g';
-                                        final String label = volumeTotal > 0
-                                            ? '${volumeTotal.toStringAsFixed(0)} $unit'
-                                            : '';
-                                        provider.addEntry(SugarEntry(
-                                          id: DateTime.now()
-                                              .millisecondsSinceEpoch
-                                              .toString(),
-                                          brandName: _controller
-                                              .productController.text,
-                                          variantName:
-                                              _controller.varianController.text,
-                                          rawSugarGrams: totalSugar,
-                                          volumeTotal: volumeTotal,
-                                          volumeLabel: label,
-                                          imageBytes: widget.ocrImage,
-                                          imageUrl: imageUrl,
-                                          timestamp: DateTime.now(),
-                                        ));
-                                      },
+                                      onSuccess:
+                                          (totalSugar, volumeTotal, imageUrl) {
+                                            final bool isBeverage =
+                                                _controller.selectedCategory ==
+                                                ProductCategory.minuman;
+                                            final String unit = isBeverage
+                                                ? 'ml'
+                                                : 'g';
+                                            final String label = volumeTotal > 0
+                                                ? '${volumeTotal.toStringAsFixed(0)} $unit'
+                                                : '';
+                                            provider.addEntry(
+                                              SugarEntry(
+                                                id: DateTime.now()
+                                                    .millisecondsSinceEpoch
+                                                    .toString(),
+                                                brandName: _controller
+                                                    .productController
+                                                    .text,
+                                                variantName: _controller
+                                                    .varianController
+                                                    .text,
+                                                rawSugarGrams: totalSugar,
+                                                volumeTotal: volumeTotal,
+                                                volumeLabel: label,
+                                                imageBytes: widget.ocrImage,
+                                                imageUrl: imageUrl,
+                                                timestamp: DateTime.now(),
+                                              ),
+                                            );
+                                          },
                                     );
                                     if (success && mounted) {
                                       navigator.popUntil((r) => r.isFirst);
-                                      MainScreen.switchToHome();
+                                      AppShell.switchToHome();
                                     }
                                   }
                                 : null,

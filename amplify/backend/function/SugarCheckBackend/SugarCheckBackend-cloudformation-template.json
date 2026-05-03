@@ -166,6 +166,29 @@
                   }
                 ]
               }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:CopyObject",
+                "s3:DeleteObject"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:aws:s3:::${s3BucketName}/*"
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SugarCheckRateLimit"
+              }
             }
           ]
         }

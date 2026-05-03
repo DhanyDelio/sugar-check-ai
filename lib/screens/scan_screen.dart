@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../controllers/camera_controller.dart';
-import '../screens/main_screen.dart';
+import '../widgets/app_shell.dart';
 import '../services/user_id_service.dart';
 import '../widgets/camera_preview_widget.dart';
 import '../widgets/capture_button_widget.dart';
@@ -88,7 +88,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       top: MediaQuery.of(context).padding.top + 8,
                       left: 8,
                       child: IconButton(
-                        onPressed: () => MainScreen.switchToHome(),
+                        onPressed: () => AppShell.switchToHome(),
                         icon: const Icon(
                           Icons.arrow_back,
                           color: Colors.white,

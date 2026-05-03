@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
-	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -24,16 +22,12 @@ import (
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const (
-	rateLimitMax    = 5
+	// Each upload session sends: 1 primary image + 1 primary JSON
+	// + N silent frames (image + JSON each). With ~9 frames that's ~20 requests.
+	// Allow 30 per minute to comfortably cover a full session.
+	rateLimitMax    = 30
 	rateLimitWindow = 60 // seconds
 	presignExpiry   = 5 * time.Minute
-
-	// Max file sizes — matched to what the Flutter app actually sends:
-	// Primary image: 800px, quality 45 → ~60-100KB
-	// Silent frames: 400px, quality 30 → ~15-40KB
-	// JSON sidecar:  metadata only     → ~1-2KB
-	maxImageBytes = 200 * 1024 // 200KB — safe ceiling for compressed JPEG
-	maxJSONBytes  = 5 * 1024   // 5KB   — metadata only, never large
 
 	// Allowed staging folder — hardcoded, client cannot override
 	stagingFolder = "quarantine-dataset"
@@ -47,14 +41,6 @@ var allowedContentTypes = map[string]bool{
 
 // ── Structs ───────────────────────────────────────────────────────────────────
 
-type SidecarMetadata struct {
-	Brand      string  `json:"product_name"`
-	Variant    string  `json:"variant_name"`
-	Volume     string  `json:"volume_total"`
-	Confidence float64 `json:"ai_confidence"`
-	UserID     string  `json:"user_id"`
-}
-
 // PresignRequest is the body Flutter sends to /upload
 type PresignRequest struct {
 	UserID      string  `json:"user_id"`
@@ -64,7 +50,6 @@ type PresignRequest struct {
 	Confidence  float64 `json:"ai_confidence"`
 	FileName    string  `json:"file_name"`
 	ContentType string  `json:"content_type"`
-	// StagingFolder intentionally removed — hardcoded server-side for security
 }
 
 // PresignResponse is returned to Flutter
@@ -106,39 +91,8 @@ func buildStagingPath(product, variant, volume, fileName string) string {
 	p := normalize(product)
 	v := normalize(variant)
 	vol := normalize(volume)
-	ts := fmt.Sprintf("%d", time.Now().UnixMilli())
-	return fmt.Sprintf("public/%s/%s/%s/%s/%s_%s", stagingFolder, p, v, vol, ts, fileName)
-}
-
-func isValidForCluster(m SidecarMetadata) bool {
-	return m.Confidence >= 0.5 &&
-		strings.TrimSpace(m.Brand) != "" &&
-		strings.TrimSpace(m.Variant) != "" &&
-		strings.TrimSpace(m.Volume) != ""
-}
-
-func deleteS3Object(ctx context.Context, bucket, key string) {
-	_, err := s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		log.Printf("⚠️  DeleteObject failed for %s: %v", key, err)
-	}
-}
-
-func moveS3Object(ctx context.Context, bucket, src, dst string) error {
-	copySource := url.PathEscape(fmt.Sprintf("%s/%s", bucket, src))
-	_, err := s3Client.CopyObject(ctx, &s3.CopyObjectInput{
-		Bucket:     aws.String(bucket),
-		CopySource: aws.String(copySource),
-		Key:        aws.String(dst),
-	})
-	if err != nil {
-		return fmt.Errorf("CopyObject %s → %s: %w", src, dst, err)
-	}
-	deleteS3Object(ctx, bucket, src)
-	return nil
+	// path.Clean not needed — all segments are already normalized
+	return fmt.Sprintf("public/%s/%s/%s/%s/%s", stagingFolder, p, v, vol, fileName)
 }
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
@@ -180,7 +134,7 @@ func isRateLimited(ctx context.Context, uuid string) (bool, error) {
 	})
 
 	if err != nil {
-		// Window expired — reset
+		// Window expired — reset counter
 		_, resetErr := dynClient.PutItem(ctx, &dynamodb.PutItemInput{
 			TableName: aws.String(tableName),
 			Item: map[string]types.AttributeValue{
@@ -236,12 +190,6 @@ func handlePresignRequest(ctx context.Context, req events.APIGatewayProxyRequest
 			Body: `{"error":"content_type not allowed"}`}, nil
 	}
 
-	// Determine max file size based on content type
-	maxBytes := int64(maxImageBytes)
-	if contentType == "application/json" {
-		maxBytes = int64(maxJSONBytes)
-	}
-
 	// Rate limit check
 	limited, err := isRateLimited(ctx, body.UserID)
 	if err != nil {
@@ -261,12 +209,10 @@ func handlePresignRequest(ctx context.Context, req events.APIGatewayProxyRequest
 		body.FileName,
 	)
 
-	// Generate presigned PUT URL with content-type + size enforcement
 	presignResult, err := presigner.PresignPutObject(ctx, &s3.PutObjectInput{
-		Bucket:        aws.String(bucketName),
-		Key:           aws.String(s3Key),
-		ContentType:   aws.String(contentType),
-		ContentLength: aws.Int64(maxBytes),
+		Bucket:      aws.String(bucketName),
+		Key:         aws.String(s3Key),
+		ContentType: aws.String(contentType),
 	}, func(o *s3.PresignOptions) {
 		o.Expires = presignExpiry
 	})
@@ -290,82 +236,26 @@ func handlePresignRequest(ctx context.Context, req events.APIGatewayProxyRequest
 	}, nil
 }
 
-// ── S3 Event Handler — clustering ─────────────────────────────────────────────
+// ── S3 Event Handler — clustering (DISABLED) ──────────────────────────────────
+//
+// Clustering is intentionally disabled. All uploads stay in quarantine-dataset/
+// for manual review and annotation. Re-enable when the pipeline is ready.
 
-func handleS3Event(ctx context.Context, s3Event events.S3Event) error {
+func handleS3Event(_ context.Context, s3Event events.S3Event) error {
 	for _, record := range s3Event.Records {
-		bucket := record.S3.Bucket.Name
-		key := record.S3.Object.Key
-
-		if bucketName != "" && bucket != bucketName {
-			log.Printf("⚠️  Skipping unexpected bucket: %s", bucket)
-			continue
-		}
-
-		if !strings.HasSuffix(strings.ToLower(key), ".json") {
-			continue
-		}
-
-		log.Printf("📄 Processing sidecar: %s", key)
-
-		result, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(key),
-		})
-		if err != nil {
-			log.Printf("❌ GetObject failed: %v", err)
-			continue
-		}
-
-		var meta SidecarMetadata
-		decodeErr := json.NewDecoder(result.Body).Decode(&meta)
-		result.Body.Close()
-
-		if decodeErr != nil {
-			log.Printf("❌ JSON decode failed: %v", decodeErr)
-			deleteS3Object(ctx, bucket, key)
-			continue
-		}
-
-		dir := path.Dir(key)
-		base := strings.TrimSuffix(path.Base(key), ".json")
-		imageKey := path.Join(dir, base+".jpg")
-
-		var destImageKey, destJSONKey string
-
-		if isValidForCluster(meta) {
-			brand := normalize(meta.Brand)
-			variant := normalize(meta.Variant)
-			volume := normalize(meta.Volume)
-			destImageKey = fmt.Sprintf("public/dataset/%s/%s/%s/%s.jpg", brand, variant, volume, base)
-			destJSONKey = fmt.Sprintf("public/dataset/%s/%s/%s/%s.json", brand, variant, volume, base)
-			log.Printf("✅ Auto-cluster → %s", destImageKey)
-		} else {
-			destImageKey = fmt.Sprintf("public/non-reviewed/%s.jpg", base)
-			destJSONKey = fmt.Sprintf("public/non-reviewed/%s.json", base)
-			log.Printf("🔍 Non-reviewed → confidence=%.2f", meta.Confidence)
-		}
-
-		if err := moveS3Object(ctx, bucket, imageKey, destImageKey); err != nil {
-			log.Printf("❌ Move image failed: %v", err)
-		}
-		if err := moveS3Object(ctx, bucket, key, destJSONKey); err != nil {
-			log.Printf("❌ Move JSON failed: %v", err)
-		}
+		log.Printf("📦 S3 event for: %s — clustering disabled, skipping", record.S3.Object.Key)
 	}
 	return nil
 }
 
-// ── Router — detect event type ────────────────────────────────────────────────
+// ── Router ────────────────────────────────────────────────────────────────────
 
-func handler(ctx context.Context, event json.RawMessage) (interface{}, error) {
-	// Try API Gateway event first
+func handler(ctx context.Context, event json.RawMessage) (any, error) {
 	var apiReq events.APIGatewayProxyRequest
 	if err := json.Unmarshal(event, &apiReq); err == nil && apiReq.HTTPMethod != "" {
 		return handlePresignRequest(ctx, apiReq)
 	}
 
-	// Fall back to S3 event
 	var s3Event events.S3Event
 	if err := json.Unmarshal(event, &s3Event); err == nil && len(s3Event.Records) > 0 {
 		return nil, handleS3Event(ctx, s3Event)

@@ -140,7 +140,7 @@ Setiap upload dari app melewati Go Lambda sebelum menyentuh S3:
 
 | Check | Detail |
 |---|---|
-| **Rate Limiting** | Max 5 upload/menit per device UUID (DynamoDB atomic counter) |
+| **Rate Limiting** | Max 30 upload/menit per device UUID (DynamoDB atomic counter) |
 | **Content-Type Whitelist** | Hanya `image/jpeg` dan `application/json` |
 | **File Size Enforcement** | Max 200KB untuk image, 5KB untuk JSON sidecar |
 | **Presigned URL** | Expire dalam 5 menit — Flutter tidak punya akses S3 langsung |
@@ -202,7 +202,7 @@ Go dipilih untuk Lambda karena **cold start yang sangat cepat** (~10ms vs ~500ms
 - [x] Custom-trained on-device AI (MobileNetV2, 16 classes, ~93% accuracy)
 - [x] Secure upload pipeline (Go Lambda + API Gateway + presigned S3 URLs)
 - [x] Quarantine-first data strategy (manual annotation before training)
-- [x] Rate limiting per device UUID (DynamoDB, 5 uploads/min)
+- [x] Rate limiting per device UUID (DynamoDB, 30 uploads/min)
 - [x] Real-time sugar meter with WHO daily limit
 - [x] Activity offset — hidden credit system (1,000 steps = 1g, 15g/day cap)
 - [x] Background step counting (foreground service, Realme/OPPO compatible)

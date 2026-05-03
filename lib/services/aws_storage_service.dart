@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 
@@ -12,8 +12,6 @@ import 'package:http/http.dart' as http;
 ///   3. Flutter uploads file directly to S3 via presigned URL
 ///   4. S3 event triggers Go Lambda for clustering
 class AwsStorageService {
-  static String get _apiUrl => dotenv.env['API_GATEWAY_URL'] ?? '';
-
   // ── Compression ───────────────────────────────────────────────────────────
 
   Future<Uint8List> _compressPrimary(Uint8List bytes) async {
@@ -57,34 +55,43 @@ class AwsStorageService {
     required String fileName,
     required String contentType,
   }) async {
-    final response = await http.post(
-      Uri.parse('$_apiUrl/upload'),
-      headers: {'Content-Type': 'application/json', 'x-user-id': userId},
-      body: jsonEncode({
-        'user_id': userId,
-        'product_name': productName,
-        'variant_name': variantName,
-        'volume_total': volumeTotal,
-        'ai_confidence': aiConfidence,
-        'file_name': fileName,
-        'content_type': contentType,
-      }),
-    );
-
-    if (response.statusCode == 429) {
-      throw Exception('Rate limit exceeded — try again in a minute');
-    }
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Presign request failed: ${response.statusCode} ${response.body}',
+    try {
+      final restOperation = Amplify.API.post(
+        '/upload',
+        apiName: 'sugarCheckAPI',
+        headers: {'Content-Type': 'application/json', 'x-user-id': userId},
+        body: HttpPayload.json({
+          'user_id': userId,
+          'product_name': productName,
+          'variant_name': variantName,
+          'volume_total': volumeTotal,
+          'ai_confidence': aiConfidence,
+          'file_name': fileName,
+          'content_type': contentType,
+        }),
       );
-    }
 
-    final Map<String, dynamic> body = jsonDecode(response.body);
-    return {
-      'upload_url': body['upload_url'] as String,
-      's3_key': body['s3_key'] as String,
-    };
+      final response = await restOperation.response;
+
+      if (response.statusCode == 429) {
+        throw Exception('Rate limit exceeded — try again in a minute');
+      }
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Presign request failed: ${response.statusCode} ${response.decodeBody()}',
+        );
+      }
+
+      final Map<String, dynamic> body = jsonDecode(response.decodeBody());
+      return {
+        'upload_url': body['upload_url'] as String,
+        's3_key': body['s3_key'] as String,
+      };
+    } on ApiException catch (e) {
+      throw Exception('Amplify API Exception: ${e.message}');
+    } catch (e) {
+      throw Exception('Presign request failed: $e');
+    }
   }
 
   // ── Direct S3 upload via presigned URL ────────────────────────────────────
@@ -100,11 +107,19 @@ class AwsStorageService {
       body: bytes,
     );
 
+    // S3 presigned PUT returns 200 on success
     if (uploadResponse.statusCode != 200) {
-      throw Exception('S3 upload failed: ${uploadResponse.statusCode}');
+      debugPrint(
+        "  ❌ S3 PUT failed: status=${uploadResponse.statusCode} body=${uploadResponse.body}",
+      );
+      throw Exception(
+        'S3 upload failed: ${uploadResponse.statusCode} - ${uploadResponse.body}',
+      );
     }
 
-    debugPrint("  ☁️ Uploaded via presigned URL");
+    debugPrint(
+      "  ☁️ Uploaded via presigned URL ($contentType, ${bytes.lengthInBytes} bytes)",
+    );
     return presignedUrl.split('?').first; // return clean S3 URL
   }
 
@@ -119,6 +134,7 @@ class AwsStorageService {
     required double aiConfidence,
     required String fileName,
   }) async {
+    debugPrint("  📄 Requesting presign for JSON: $fileName");
     final presign = await _requestPresignedUrl(
       userId: userId,
       productName: productName,
@@ -128,10 +144,12 @@ class AwsStorageService {
       fileName: fileName,
       contentType: 'application/json',
     );
+    debugPrint("  📄 Got presign key: ${presign['s3_key']}");
 
     final Uint8List jsonBytes = Uint8List.fromList(
       utf8.encode(jsonEncode(metadata)),
     );
+    debugPrint("  📄 JSON size: ${jsonBytes.lengthInBytes} bytes");
 
     await _uploadViaPresignedUrl(
       bytes: jsonBytes,
@@ -139,7 +157,7 @@ class AwsStorageService {
       contentType: 'application/json',
     );
 
-    debugPrint("  📄 Sidecar JSON uploaded: ${presign['s3_key']}");
+    debugPrint("  ✅ Sidecar JSON uploaded: ${presign['s3_key']}");
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -204,15 +222,20 @@ class AwsStorageService {
     debugPrint("✅ Primary uploaded: ${presign['s3_key']}");
 
     // 4. Upload primary sidecar JSON
-    await _uploadSidecarJson(
-      metadata: {...baseMetadata, 'frame_type': 'primary'},
-      userId: cleanUserId,
-      productName: productName,
-      variantName: variantName,
-      volumeTotal: volumeStr,
-      aiConfidence: aiConfidence,
-      fileName: '${timestamp}_primary.json',
-    );
+    try {
+      await _uploadSidecarJson(
+        metadata: {...baseMetadata, 'frame_type': 'primary'},
+        userId: cleanUserId,
+        productName: productName,
+        variantName: variantName,
+        volumeTotal: volumeStr,
+        aiConfidence: aiConfidence,
+        fileName: '${timestamp}_primary.json',
+      );
+    } catch (e) {
+      debugPrint("⚠️ Primary sidecar JSON upload failed: $e");
+      // Non-fatal — image already uploaded, continue with frames
+    }
 
     // 5. Compress + upload silent frames in parallel
     debugPrint("☁️ Uploading ${silentFramesList.length} silent frames...");
@@ -239,19 +262,23 @@ class AwsStorageService {
           presignedUrl: framePresign['upload_url']!,
           contentType: 'image/jpeg',
         );
-        await _uploadSidecarJson(
-          metadata: {
-            ...baseMetadata,
-            'frame_type': 'silent_frame',
-            'frame_index': i,
-          },
-          userId: cleanUserId,
-          productName: productName,
-          variantName: variantName,
-          volumeTotal: volumeStr,
-          aiConfidence: aiConfidence,
-          fileName: '${timestamp}_frame_$i.json',
-        );
+        try {
+          await _uploadSidecarJson(
+            metadata: {
+              ...baseMetadata,
+              'frame_type': 'silent_frame',
+              'frame_index': i,
+            },
+            userId: cleanUserId,
+            productName: productName,
+            variantName: variantName,
+            volumeTotal: volumeStr,
+            aiConfidence: aiConfidence,
+            fileName: '${timestamp}_frame_$i.json',
+          );
+        } catch (e) {
+          debugPrint("⚠️ Frame $i sidecar JSON upload failed (non-fatal): $e");
+        }
       }),
     );
 
