@@ -47,6 +47,10 @@ app.*.map.json
 # Environment variables
 .env
 
+# Firebase — contains API keys, must not be committed
+google-services.json
+GoogleService-Info.plist
+
 # IDE files
 *.iml
 linux/
