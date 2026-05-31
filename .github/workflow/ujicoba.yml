@@ -1,0 +1,26 @@
+name: Robot Ujicoba Dhany
+
+# 1. Pemicu: Robot jalan KALO lo nge-push kodingan ke branch main
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  proses-testing:
+    runs-on: ubuntu-latest # Robot minjem server linux virtual gratisan di cloud
+
+    steps:
+      # LANGKAH A: Robot nyalin kodingan dari repo lo ke komputernya dia
+      - name: 1. Tarik Kodingan dari GitHub
+        uses: actions/checkout@v4
+
+      # LANGKAH B: Robot jalanin perintah teks otomatis
+      - name: 2. Nge-cek Versi Node di Server Cloud
+        run: node -v
+
+      # LANGKAH C: Simulasi nyapa pawangnya wkwk
+      - name: 3. Salam dari Robot
+        run: |
+          echo "Halo Mas Dhany dari Bogor!"
+          echo "Robot GitHub Actions lo sukses jalan 100% tanpa sentuhan manual!"
