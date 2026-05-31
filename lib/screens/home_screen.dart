@@ -1,0 +1,87 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../controllers/activity_controller.dart';
+import '../controllers/sugar_provider.dart';
+import '../core/app_colors.dart';
+import '../services/battery_optimization_service.dart';
+import '../widgets/consumption_log_widget.dart';
+import '../widgets/daily_sugar_card.dart';
+import '../widgets/step_target_widget.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  static const double _dailyLimit = 50.0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ActivityController>().startPassiveTracking();
+      BatteryOptimizationService.showIfNeeded(context);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Consumer2<SugarProvider, ActivityController>(
+          builder: (context, sugar, activity, _) {
+            // Sugar meter shows net consumed — credit already deducted at scan time
+            final double consumed = sugar.todayTotal;
+            final entries = sugar.todayEntries;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Header ──────────────────────────────────────────────
+                  const Text(
+                    "Hello 👋",
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Daily Sugar Intake",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // ── Daily Sugar Card ─────────────────────────────────────
+                  DailySugarCard(
+                    consumed: consumed,
+                    limit: _dailyLimit,
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Step Target ──────────────────────────────────────────
+                  const StepTargetWidget(),
+                  const SizedBox(height: 24),
+
+                  // ── Today's Consumption ──────────────────────────────────
+                  ConsumptionLogWidget(entries: entries),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}

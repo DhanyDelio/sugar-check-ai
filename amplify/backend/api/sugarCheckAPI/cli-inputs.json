@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "paths": {
+    "/upload": {
+      "name": "/upload",
+      "lambdaFunction": "SugarCheckBackend",
+      "permissions": {
+        "setting": "protected",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ],
+        "guest": [
+          "create",
+          "read"
+        ]
+      }
+    }
+  }
+}

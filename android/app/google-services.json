@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1056648380475",
+    "project_id": "sugar-checker-with-ai",
+    "storage_bucket": "sugar-checker-with-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1056648380475:android:476bfb617844b684541c1e",
+        "android_client_info": {
+          "package_name": "com.dhany.sugar_check.sugarcheck"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDv9YN-KLswk-WiV184WM77pLMH7IzHLv0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
