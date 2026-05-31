@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import 'package:firebase_ml_model_downloader/firebase_ml_model_downloader.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
@@ -22,22 +21,15 @@ class TfliteService {
     if (_isInitializing) return;
     _isInitializing = true;
 
+    // Load bundled asset model — remote model (Firebase ML) removed,
+    // will be replaced by AWS ONNX inference in a future update.
     try {
-      // Try remote model first (Firebase ML), fall back to bundled asset
-      final customModel = await FirebaseModelDownloader.instance.getModel(
-        "SugarClassifierV1",
-        FirebaseModelDownloadType.localModelUpdateInBackground,
+      _interpreter = await Interpreter.fromAsset(
+        'assets/models/sugar_checker.tflite',
       );
-      _interpreter = Interpreter.fromFile(customModel.file);
-      debugPrint("✅ AI: Remote model loaded.");
+      debugPrint("✅ AI: Local model loaded.");
     } catch (e) {
-      debugPrint("⚠️ AI: Firebase failed. Loading local asset...");
-      try {
-        _interpreter = await Interpreter.fromAsset('assets/models/sugar_checker.tflite');
-        debugPrint("✅ AI: Local model loaded.");
-      } catch (assetError) {
-        debugPrint("❌ AI: CRITICAL — $assetError");
-      }
+      debugPrint("❌ AI: CRITICAL — $e");
     }
 
     await _loadLabels();
@@ -46,7 +38,9 @@ class TfliteService {
 
   Future<void> _loadLabels() async {
     try {
-      final String json = await rootBundle.loadString('assets/models/labels.json');
+      final String json = await rootBundle.loadString(
+        'assets/models/labels.json',
+      );
       final Map<String, dynamic> data = jsonDecode(json);
 
       // Store as Map<String, String> — key matches raw model output index
@@ -65,7 +59,11 @@ class TfliteService {
   /// Confidence threshold: $_confidenceThreshold%
   Future<ScanResult> runInference(img.Image originalImage) async {
     if (!isReady) {
-      return const ScanResult(product: "Model Not Ready", confidence: 0, isConfident: false);
+      return const ScanResult(
+        product: "Model Not Ready",
+        confidence: 0,
+        isConfident: false,
+      );
     }
 
     final int numClasses = _labelMap!.length;
@@ -90,7 +88,8 @@ class TfliteService {
       }
     }
 
-    final String product = _labelMap![rawMaxIndex.toString()] ?? "Unknown ($rawMaxIndex)";
+    final String product =
+        _labelMap![rawMaxIndex.toString()] ?? "Unknown ($rawMaxIndex)";
     final double confidence = highestScore * 100;
 
     // Log top 3 predictions for debugging

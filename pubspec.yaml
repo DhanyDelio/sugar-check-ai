@@ -10,14 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Firebase
-  firebase_core: ^2.27.0
-  firebase_ml_model_downloader: ^0.2.5+6
-
   # AWS Amplify
   amplify_flutter: ^2.5.0
   amplify_auth_cognito: ^2.5.0
   amplify_storage_s3: ^2.5.0
+  amplify_api: ^2.5.0
 
   # Networking
   http: ^1.1.0
